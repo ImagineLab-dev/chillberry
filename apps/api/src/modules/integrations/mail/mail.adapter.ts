@@ -9,7 +9,7 @@ import { logger } from '../../../common/logging/logger';
  * Sin `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` cae en modo sandbox: loguea el
  * mensaje —incluido el código— en vez de enviarlo. Así el flujo completo se
  * prueba en local y en los tests sin casilla configurada, con el mismo criterio
- * que los adapters de WhatsApp y de pagos.
+ * que los adapters de los avisos y de pagos.
  *
  * En producción el arranque avisa si esto quedó en sandbox (ver
  * `warnSandboxEnProduccion` en config/env.ts): sin envío real, nadie puede

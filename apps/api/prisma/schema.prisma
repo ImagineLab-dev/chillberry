@@ -57,6 +57,7 @@ model Tenant {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   users        User[]
+  pushSubscriptions PushSubscription[]
   restaurants  Restaurant[]
   drivers      Driver[]
   subscription Subscription?
@@ -103,6 +104,7 @@ model User {
   branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: Restrict)
   refreshTokens RefreshToken[]
   driverProfile Driver?
+  pushSubscriptions PushSubscription[]
 
   @@index([tenantId, role])
   @@index([branchId])
@@ -1638,4 +1640,34 @@ model VerificationCode {
   @@index([email, purpose])
   @@index([expiresAt])
   @@map("verification_codes")
+}
+
+/// Suscripción a notificaciones push del navegador.
+///
+/// Reemplaza a WhatsApp como forma de avisarle a alguien que no está mirando la
+/// pantalla: el comensal escanea el QR, pide, y guarda el teléfono en el
+/// bolsillo. Sin push no se entera de nada hasta volver a abrir la página.
+///
+/// Se busca por TELÉFONO porque el comensal no tiene cuenta — es el único dato
+/// que lo identifica, y es con el que ya trabajaban todas las notificaciones.
+model PushSubscription {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  phone     String
+  /// Único: si la misma persona se resuscribe desde el mismo dispositivo, se
+  /// actualiza en vez de duplicarle el aviso.
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  /// Sólo si quien se suscribe tiene cuenta (repartidor, personal).
+  userId    String?   @map("user_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Última vez que el navegador aceptó un envío: permite limpiar las muertas.
+  lastOkAt  DateTime? @map("last_ok_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, phone])
+  @@map("push_subscriptions")
 }

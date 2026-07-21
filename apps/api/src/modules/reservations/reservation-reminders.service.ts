@@ -5,10 +5,11 @@ import { NotificationsService } from '../integrations/notifications.service';
 import { logger } from '../../common/logging/logger';
 
 /**
- * Manda el recordatorio de reserva por WhatsApp unas horas antes. Corre como
+ * Manda el recordatorio de reserva por los avisos unas horas antes. Corre como
  * cron (cada 15 min), sin request ni tenant en contexto — por eso usa el
  * `PrismaService` crudo y consulta CROSS-tenant (es un job de sistema). El
- * `WhatsAppAdapter` es global, así que no necesita tenant en el ALS.
+ * `PushService` resuelve el destino por teléfono y recibe el tenant explícito,
+ * así que no necesita el ALS.
  *
  * Ventana: reservas CONFIRMED cuyo `reservedFor` cae en las próximas 2 horas y
  * que todavía no recibieron el aviso (`reminderSent=false`). El flag evita
@@ -39,7 +40,7 @@ export class ReservationRemindersService {
 
     for (const r of due) {
       await this.notifications
-        .notifyReservationReminder(r.customerPhone, r.customerName, r.reservedFor, r.partySize)
+        .notifyReservationReminder(r.tenantId, r.customerPhone, r.customerName, r.reservedFor, r.partySize)
         .catch(() => {});
       // updateMany (no update): el cliente crudo no exige unique compuesto y el
       // id ya es único; marca enviado aunque el envío sea best-effort.

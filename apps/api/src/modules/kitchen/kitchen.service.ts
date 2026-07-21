@@ -282,7 +282,7 @@ export class KitchenService {
 
       // Avisar "listo": en vivo a las pantallas de la sucursal (el mozo escucha
       // `order:ready` en el mismo namespace `/kitchen`), y al cliente por
-      // WhatsApp si dejó teléfono (take away / delivery). Best-effort: nunca
+      // los avisos si dejó teléfono (take away / delivery). Best-effort: nunca
       // rompe el avance de estado.
       this.gateway.emitToBranch(order.branchId, 'order:ready', {
         orderId,
@@ -290,7 +290,7 @@ export class KitchenService {
         type: order.type,
       });
       const ref = order.table?.code ? `mesa ${order.table.code}` : null;
-      await this.notifications.notifyOrderReady(order.customerPhone, ref).catch(() => {});
+      await this.notifications.notifyOrderReady(order.tenantId, order.customerPhone, ref).catch(() => {});
     }
   }
 

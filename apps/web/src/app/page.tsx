@@ -172,7 +172,7 @@ const PLAN_INCLUDES = [
   'Delivery con seguimiento',
   'Carta con QR y link público',
   'Reportes y control interno',
-  'Avisos por WhatsApp',
+  'Avisos al teléfono',
 ];
 
 export default function LandingPage() {

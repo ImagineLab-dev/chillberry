@@ -12,7 +12,7 @@ import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
 export class FeedbackController {
   constructor(private readonly feedback: FeedbackService) {}
 
-  // --- Público (sin auth): lo abre el cliente desde el link del WhatsApp. ---
+  // --- Público (sin auth): lo abre el cliente desde el link del aviso. ---
 
   @Public()
   @Throttle(strictThrottle(30))

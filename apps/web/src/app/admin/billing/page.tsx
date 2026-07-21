@@ -13,7 +13,7 @@ type Plan = {
   priceMonthly: string;
   currency: string;
   limits: { maxBranches: number; maxUsers: number };
-  features: { delivery: boolean; whatsapp: boolean; invoicing: boolean };
+  features: { delivery: boolean; push: boolean; invoicing: boolean };
 };
 
 type Subscription = {
@@ -62,7 +62,7 @@ type PlanFeatures = Plan['features'];
 
 const PLAN_FEATURE_ROWS: { key: keyof PlanFeatures; label: string }[] = [
   { key: 'delivery', label: 'Delivery' },
-  { key: 'whatsapp', label: 'Avisos por WhatsApp' },
+  { key: 'push', label: 'Avisos al teléfono' },
   { key: 'invoicing', label: 'Facturación / comprobantes' },
 ];
 
@@ -204,7 +204,7 @@ export default function BillingPage() {
                 <li>Hasta {plan.limits.maxBranches} sucursal(es)</li>
                 <li>Hasta {plan.limits.maxUsers} usuarios</li>
                 <li>{plan.features.delivery ? 'Delivery incluido' : 'Sin delivery'}</li>
-                <li>{plan.features.whatsapp ? 'WhatsApp incluido' : 'Sin WhatsApp'}</li>
+                <li>{plan.features.push ? 'Avisos al teléfono incluidos' : 'Sin avisos'}</li>
               </ul>
               <button
                 disabled={isCurrent || pendingPlanId === plan.id}

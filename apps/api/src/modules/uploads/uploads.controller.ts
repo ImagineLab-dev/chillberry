@@ -29,7 +29,7 @@ const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
  * Almacenamiento local en disco (MVP) — sirve para un único servidor/VPS.
  * Si en el futuro se necesita escalar horizontalmente, este es el punto de
  * reemplazo por un adapter de storage (S3/R2), mismo patrón que
- * PaymentProviderAdapter/WhatsAppAdapter: cambiar la implementación acá
+ * PaymentProviderAdapter/PushAdapter: cambiar la implementación acá
  * adentro sin tocar los callers (que solo esperan `{ url: string }`).
  */
 @Controller('uploads')

@@ -6,7 +6,7 @@ import { NotificationsService } from '../integrations/notifications.service';
  * Marketing / CRM. Segmenta la base de clientes (derivada de los pedidos
  * COMPLETED por teléfono, igual que CustomersService) por COMPORTAMIENTO —
  * frecuentes, inactivos (win-back), nuevos — y permite mandarles una campaña
- * por WhatsApp o exportarlos. Los segmentos se calculan al vuelo; no hay estado
+ * por push o exportarlos. Los segmentos se calculan al vuelo; no hay estado
  * que mantener.
  */
 
@@ -74,7 +74,7 @@ export class MarketingService {
   }
 
   /**
-   * Manda una campaña por WhatsApp a todos los clientes del segmento con
+   * Manda una campaña por push a todos los clientes del segmento con
    * teléfono. Best-effort (un envío caído no rompe el resto). Registra la
    * campaña para tener historial y devuelve a cuántos se mandó.
    */
@@ -85,7 +85,9 @@ export class MarketingService {
     const recipients = customers.filter((c) => c.phone);
 
     for (const c of recipients) {
-      await this.notifications.notifyMarketingCampaign(c.phone, text).catch(() => {});
+      await this.notifications
+        .notifyMarketingCampaign(this.tenantPrisma.tenantId, c.phone, text)
+        .catch(() => {});
     }
 
     await this.tenantPrisma.client.marketingCampaign.create({

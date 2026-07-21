@@ -1,5 +1,6 @@
 'use client';
 
+import { ActivarAvisos } from '@/components/activar-avisos';
 import { use, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { io } from 'socket.io-client';
@@ -190,6 +191,12 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
                 </p>
               )
             )}
+
+            {/* Avisos al teléfono: es lo que reemplaza al WhatsApp. Sin esto,
+                quien cierra la pestaña no se entera de nada hasta volver. */}
+            <div className="mt-4">
+              <ActivarAvisos ruta={`push/suscribir/seguimiento/${token}`} />
+            </div>
 
             {tracking.driverName && (
               <p className="mt-1 text-base text-muted-foreground">

@@ -92,7 +92,7 @@ export class PublicMenuService {
 
   /**
    * Carta pública COMPARTIBLE de una sucursal (`/r/:slug`), no atada a una
-   * mesa: la que va en la bio de Instagram o se manda por WhatsApp. Sirve el
+   * mesa: la que va en la bio de Instagram o se manda por los avisos. Sirve el
    * mismo menú que el QR, más la config de pedido online (delivery/retiro,
    * tarifa de envío, si está habilitado) para que el front sepa qué ofrecer.
    */

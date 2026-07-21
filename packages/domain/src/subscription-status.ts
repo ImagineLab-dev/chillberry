@@ -25,7 +25,8 @@ export type PlanLimits = {
 
 export type PlanFeatures = {
   delivery: boolean;
-  whatsapp: boolean;
+  /** Avisos push al teléfono del cliente y del personal. */
+  push: boolean;
   invoicing: boolean;
 };
 

@@ -5,7 +5,7 @@ import { FeedbackService } from './feedback.service';
 import { FeedbackSurveyService } from './feedback-survey.service';
 
 @Module({
-  // IntegrationsModule: NotificationsService, para mandar el link por WhatsApp.
+  // IntegrationsModule: NotificationsService, para mandar el link por push.
   imports: [IntegrationsModule],
   controllers: [FeedbackController],
   providers: [FeedbackService, FeedbackSurveyService],

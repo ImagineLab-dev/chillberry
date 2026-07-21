@@ -284,7 +284,12 @@ export class DeliveryService {
     this.gateway.emitToDriver(chosen.id, 'delivery:assigned', { deliveryId });
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: 'DRIVER_ASSIGNED' });
     // Fase 7 — best-effort: nunca bloquea la asignación si falla.
-    await this.notifications.notifyDeliveryAssigned(delivery.order.customerPhone, delivery.estimatedMinutes);
+    await this.notifications.notifyDeliveryAssigned(
+      delivery.tenantId,
+      delivery.order.customerPhone,
+      delivery.estimatedMinutes,
+      delivery.trackingToken,
+    );
 
     return updated;
   }
@@ -348,7 +353,12 @@ export class DeliveryService {
     await this.logEvent(deliveryId, 'DRIVER_ASSIGNED', { driverId, manual: true });
     this.gateway.emitToDriver(driverId, 'delivery:assigned', { deliveryId });
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: 'DRIVER_ASSIGNED' });
-    await this.notifications.notifyDeliveryAssigned(delivery.order.customerPhone, delivery.estimatedMinutes);
+    await this.notifications.notifyDeliveryAssigned(
+      delivery.tenantId,
+      delivery.order.customerPhone,
+      delivery.estimatedMinutes,
+      delivery.trackingToken,
+    );
     return updated;
   }
 
@@ -399,7 +409,7 @@ export class DeliveryService {
     });
     await this.logEvent(deliveryId, 'DELIVERY_COMPLETED', {});
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: 'DELIVERED' });
-    await this.notifications.notifyDeliveryCompleted(delivery.order.customerPhone);
+    await this.notifications.notifyDeliveryCompleted(delivery.tenantId, delivery.order.customerPhone);
     return stripConfirmationCode(updated);
   }
 

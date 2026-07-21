@@ -386,7 +386,11 @@ export class PaymentsService {
     await this.loyalty.accrueForCompletedOrder(order);
 
     // Fase 7 — best-effort: nunca bloquea el cierre del pedido si falla.
-    await this.notifications.notifyOrderCompleted(order.customerPhone, Number(order.total).toFixed(2));
+    await this.notifications.notifyOrderCompleted(
+      order.tenantId,
+      order.customerPhone,
+      Number(order.total).toFixed(2),
+    );
   }
 
   /**

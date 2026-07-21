@@ -38,7 +38,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: string[] }> = [
 //  /r      → carta COMPARTIBLE de una sucursal (bio de Instagram/WhatsApp),
 //            el pedido de delivery/retiro. Es un cliente anónimo, igual que /menu.
 //  /s      → "storefront" de un tenant por subdominio (varias sucursales).
-//  /encuesta → encuesta de calificación post-visita (link que llega por WhatsApp).
+//  /encuesta → encuesta de calificación post-visita (link que llega por aviso).
 // `/r/` y `/s/` con barra: prefijos de una sola letra, sin la barra abrirían
 // cualquier futura ruta top-level que empiece con esa letra.
 const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/r/', '/s/', '/encuesta'];

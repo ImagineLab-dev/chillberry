@@ -6,7 +6,7 @@ import { KitchenService } from './kitchen.service';
 import { KitchenGateway } from './kitchen.gateway';
 
 @Module({
-  // IntegrationsModule: para avisar al cliente por WhatsApp cuando el pedido
+  // IntegrationsModule: para avisarle al cliente cuando el pedido
   // pasa a "listo" (NotificationsService).
   imports: [JwtModule.register({}), IntegrationsModule],
   controllers: [KitchenController],

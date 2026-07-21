@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
+import { PushAdapter } from './push/push.adapter';
+import { PushService } from './push/push.service';
+import { PushController } from './push/push.controller';
 import { MailAdapter } from './mail/mail.adapter';
 import { NotificationsService } from './notifications.service';
 
@@ -9,9 +11,14 @@ import { NotificationsService } from './notifications.service';
  * - Mail (SMTP): implementado (ver `mail/mail.adapter.ts`) — lo usa el alta
  *   de cuenta y la recuperación de contraseña. Real con SMTP_* configurado,
  *   sandbox (solo log) si no.
- * - WhatsApp: implementado (ver `whatsapp/whatsapp.adapter.ts` +
- *   `NotificationsService`) — real cuando `WHATSAPP_API_TOKEN`/
- *   `WHATSAPP_PHONE_NUMBER_ID` están configurados, sandbox (solo log) si no.
+ * - Notificaciones push del navegador (ver `push/` + `NotificationsService`):
+ *   real con `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`, sandbox (solo log) si no.
+ *
+ *   Reemplazaron a WhatsApp, que se sacó del producto: la vía oficial obliga a
+ *   cada restaurante a tener cuenta de Meta con plantillas aprobadas una por
+ *   una, y la vía por QR arriesga que le bloqueen la línea de su negocio — el
+ *   número impreso en su menú, con todo el historial de sus clientes. El push
+ *   llega igual con la pantalla apagada, no depende de nadie y no se bloquea.
  * - Maps: ya integrado en la Fase 5 (distancia por Haversine en el algoritmo
  *   de asignación, link a Google Maps en `/track` y en la app de repartidor)
  *   — no hace falta un módulo nuevo acá.
@@ -34,7 +41,8 @@ import { NotificationsService } from './notifications.service';
  *   media-funcionalidad sin un proveedor real detrás.
  */
 @Module({
-  providers: [WhatsAppAdapter, MailAdapter, NotificationsService],
-  exports: [NotificationsService, MailAdapter],
+  controllers: [PushController],
+  providers: [PushAdapter, PushService, MailAdapter, NotificationsService],
+  exports: [NotificationsService, MailAdapter, PushService],
 })
 export class IntegrationsModule {}

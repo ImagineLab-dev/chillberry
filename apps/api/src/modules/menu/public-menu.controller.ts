@@ -10,7 +10,7 @@ import { CreatePublicOrderDto } from './dto/create-public-order.dto';
 /**
  * Todo lo que ve/hace un cliente anónimo — SIN auth, como `TrackingController`
  * (Fase 5). Dos superficies públicas:
- *  - `branch/:slug` → carta COMPARTIBLE de una sucursal (Instagram/WhatsApp),
+ *  - `branch/:slug` → carta COMPARTIBLE de una sucursal (Instagram/los avisos),
  *    con pedido de delivery/retiro y pago al recibir.
  *  - `:qrToken` → carta del QR de una MESA, con pedido self-service DINE_IN.
  * Ver `PublicMenuService` para el detalle de cada operación.

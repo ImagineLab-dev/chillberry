@@ -74,7 +74,7 @@ export default function FeedbackPage() {
     <div>
       <PageHeader
         title="Opiniones de clientes"
-        description="Calificación de la atención — la encuesta llega por WhatsApp unas horas después de cada visita."
+        description="Calificación de la atención — la encuesta le llega al cliente unas horas después de su visita."
       />
       <CustomersTabs />
 
@@ -109,7 +109,7 @@ export default function FeedbackPage() {
         <EmptyState
           icon={Star}
           title="Todavía no hay opiniones"
-          description="Cuando tus clientes respondan la encuesta que les llega por WhatsApp, vas a ver acá la calificación promedio, los comentarios y el desempeño por mozo."
+          description="Cuando tus clientes respondan la encuesta que les llega al teléfono, vas a ver acá la calificación promedio, los comentarios y el desempeño por mozo."
         />
       )}
 

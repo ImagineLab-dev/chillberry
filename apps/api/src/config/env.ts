@@ -49,14 +49,9 @@ const EnvSchemaBase = z.object({
   // recién cuando el cobro esté probado.
   DLOCAL_API_BASE: z.string().url().default('https://api-sbx.dlocalgo.com'),
 
-  // Fase 7 — WhatsApp (Meta Cloud API). Opcionales a propósito: sin estas
-  // dos variables, WhatsAppAdapter cae en modo sandbox (loguea el mensaje en
-  // vez de enviarlo) — configurarlas activa el envío real sin tocar código.
-  WHATSAPP_API_TOKEN: z.string().min(1).optional(),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
 
   // Envío de mail (códigos de alta y de recuperación de cuenta). Mismo criterio
-  // que WhatsApp: sin credenciales, el adapter loguea el mail en vez de
+  // que las notificaciones push: sin credenciales, el adapter loguea el mail en vez de
   // enviarlo, así el flujo completo se puede probar sin casilla configurada.
   // OJO: son las credenciales de la CASILLA (soporte@tudominio), no la API key
   // del proveedor de hosting — son cosas distintas.
@@ -77,6 +72,18 @@ const EnvSchemaBase = z.object({
    * al dominio antes de tener el primer cliente.
    */
   MAIL_SANDBOX: z.enum(['true', 'false']).default('false'),
+
+  // Notificaciones push del navegador (Web Push + VAPID).
+  //
+  // Sirven para avisarle a alguien que no está mirando la
+  // pantalla. Sin estas dos claves el sistema loguea en vez de enviar: el flujo
+  // se prueba igual, pero nadie recibe nada.
+  //
+  // Se generan una sola vez y NO se rotan a la ligera: cambiarlas invalida
+  // todas las suscripciones existentes y cada usuario tiene que volver a dar
+  // permiso. Generar con:  node -e "console.log(require('web-push').generateVAPIDKeys())"
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
 
   // Ruteo por calles para el seguimiento de entregas.
   //
@@ -134,7 +141,7 @@ export function loadEnv(): AppEnv {
 
 /**
  * Integraciones que NO bloquean el arranque pero que en producción casi seguro
- * son un olvido: quedan en modo sandbox y fallan en silencio (WhatsApp loguea
+ * son un olvido: quedan en modo sandbox y fallan en silencio (los avisos se loguean
  * en vez de enviar; el cobro con tarjeta simula la aprobación). Sin este aviso
  * te enterás cuando un cliente reclama que nunca le llegó el mensaje.
  */
@@ -142,8 +149,10 @@ function warnSandboxEnProduccion(env: AppEnv): void {
   if (env.NODE_ENV !== 'production') return;
 
   const enSandbox: string[] = [];
-  if (!env.WHATSAPP_API_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
-    enSandbox.push('WhatsApp (no se envía ningún mensaje: confirmaciones, avisos de delivery y encuestas quedan sólo en el log)');
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+    enSandbox.push(
+      'Notificaciones push (no se envía ningún aviso: pedido listo, delivery en camino, recordatorios y encuestas quedan sólo en el log)',
+    );
   }
   if (env.BILLING_PROVIDER === 'mock') {
     enSandbox.push('Cobro de suscripciones (BILLING_PROVIDER=mock: no se cobra de verdad)');

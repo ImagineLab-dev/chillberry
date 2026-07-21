@@ -84,7 +84,7 @@ services:
           memory: 1G
 
   api:
-    image: chillberry-api:8
+    image: chillberry-api:9
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}
@@ -108,6 +108,8 @@ services:
       DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
       LOG_LEVEL: ${LOG_LEVEL}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       ROUTING_PROVIDER: ${ROUTING_PROVIDER}
       ROUTING_BASE_URL: ${ROUTING_BASE_URL}
     volumes:
@@ -129,7 +131,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:8
+    image: chillberry-web:9
     networks:
       easypanel:
         aliases:

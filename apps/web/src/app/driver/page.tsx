@@ -1,5 +1,6 @@
 'use client';
 
+import { ActivarAvisos } from '@/components/activar-avisos';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bike, LogOut, MapPin, Package, Phone, Store } from 'lucide-react';
@@ -198,6 +199,12 @@ export default function DriverPage() {
           </button>
         </div>
       </header>
+
+      {/* Sin esto, el repartidor sólo se entera de una asignación nueva si deja
+          esta pantalla abierta y encendida todo el turno. */}
+      <div className="mb-4">
+        <ActivarAvisos ruta="push/suscribir" conAuth texto="Avisame cuando me asignen un pedido" />
+      </div>
 
       {error && <Alert tone="error" className="mb-3">{error}</Alert>}
 

@@ -13,7 +13,7 @@ const SURVEY_DELAY_MS = 3 * 60 * 60 * 1000; // 3 horas
 const SURVEY_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 horas
 
 /**
- * Manda la encuesta de calificación post-visita por WhatsApp. Cron cada 15 min,
+ * Manda la encuesta de calificación post-visita por push. Cron cada 15 min,
  * sin request ni tenant en contexto (job de sistema) → `PrismaService` crudo,
  * cross-tenant, con `tenantId` explícito por fila. Mismo patrón que los
  * recordatorios de reserva.
@@ -68,7 +68,9 @@ export class FeedbackSurveyService {
         // único) — se saltea sin re-enviar.
         continue;
       }
-      await this.notifications.notifyFeedbackRequest(o.customerPhone, `${base}/encuesta/${token}`).catch(() => {});
+      await this.notifications
+        .notifyFeedbackRequest(o.tenantId, o.customerPhone, `${base}/encuesta/${token}`)
+        .catch(() => {});
       sent += 1;
     }
     if (sent > 0) logger.info({ count: sent }, 'Encuestas de calificación enviadas');

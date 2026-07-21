@@ -119,7 +119,7 @@ export default function MarketingPage() {
     <div>
       <PageHeader
         title="Marketing"
-        description="Segmentá tu base de clientes y mandales una campaña por WhatsApp o exportala."
+        description="Segmentá tu base de clientes y mandales una campaña al teléfono o exportala."
       />
       <CustomersTabs />
 
@@ -127,9 +127,9 @@ export default function MarketingPage() {
       {notice && <Alert tone="ok" className="mb-4">{notice}</Alert>}
 
       <Alert tone="info" className="mb-6">
-        El envío real por WhatsApp necesita una plantilla de marketing aprobada en Meta y la integración
-        configurada. Sin eso, el mensaje queda registrado pero no se envía (modo sandbox). El export a CSV
-        funciona siempre — podés usarlo para tu propia herramienta de envío.
+        La campaña llega como aviso al teléfono, y sólo a los clientes que lo activaron desde su pedido. A
+        los demás no les llega nada: no hay forma de escribirle a alguien que nunca lo aceptó. El export a
+        CSV funciona siempre — podés usarlo para tu propia herramienta de envío.
       </Alert>
 
       {loading && <Skeleton className="h-40" />}
@@ -199,7 +199,7 @@ export default function MarketingPage() {
                 </table>
               </div>
 
-              {/* Campaña por WhatsApp al segmento. */}
+              {/* Campaña por aviso al teléfono, al segmento. */}
               <div className="border-t border-border pt-4">
                 <label className="label mb-1.5 block flex items-center gap-2" htmlFor="mkt-msg">
                   <Megaphone className="h-4 w-4 text-muted-foreground" />

@@ -21,7 +21,7 @@ const BILLING_PERIOD_DAYS = 30;
 
 const FEATURE_LABEL: Record<keyof PlanFeatures, string> = {
   delivery: 'Delivery',
-  whatsapp: 'los avisos por WhatsApp',
+  push: 'los avisos al teléfono',
   invoicing: 'la facturación',
 };
 

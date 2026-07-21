@@ -23,11 +23,9 @@ const PLANS = [
     priceMonthly: 29,
     sortOrder: 0,
     limits: { maxBranches: 1, maxUsers: 5 },
-    // Delivery/WhatsApp incluidos en los tres planes — lo que diferencia un
-    // plan de otro es la escala (sucursales/usuarios), no estas dos
-    // features. Ver mensaje del usuario: "no pongas cantidad... solo que
-    // diga incluido en todas".
-    features: { delivery: true, whatsapp: true, invoicing: true },
+    // Delivery, avisos y facturación van en los tres planes: lo que cambia
+    // entre planes es la escala (sucursales/usuarios), no estas features.
+    features: { delivery: true, push: true, invoicing: true },
   },
   {
     code: 'PRO',
@@ -35,7 +33,7 @@ const PLANS = [
     priceMonthly: 79,
     sortOrder: 1,
     limits: { maxBranches: 3, maxUsers: 15 },
-    features: { delivery: true, whatsapp: true, invoicing: true },
+    features: { delivery: true, push: true, invoicing: true },
   },
   {
     code: 'ENTERPRISE',
@@ -43,7 +41,7 @@ const PLANS = [
     priceMonthly: 199,
     sortOrder: 2,
     limits: { maxBranches: 10, maxUsers: 50 },
-    features: { delivery: true, whatsapp: true, invoicing: true },
+    features: { delivery: true, push: true, invoicing: true },
   },
 ] as const;
 

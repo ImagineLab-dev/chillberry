@@ -1,77 +1,105 @@
 import { Injectable } from '@nestjs/common';
-import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
-import { logger } from '../../common/logging/logger';
+import { PushService } from './push/push.service';
 
 /**
- * Fachada de notificaciones salientes usada por los módulos de negocio
- * (Payments, Delivery) — mantiene el detalle de "qué template, qué
- * variables" fuera de esos services, y garantiza que una notificación
- * caída NUNCA tumbe el flujo que la dispara (pagar un pedido o entregar un
- * delivery no puede fallar porque WhatsApp esté caído).
+ * Fachada de avisos salientes para los módulos de negocio (Payments, Delivery,
+ * Reservas, Feedback, Marketing). Mantiene el "qué se dice" fuera de esos
+ * services, y garantiza que un aviso caído NUNCA tumbe el flujo que lo dispara:
+ * cobrar un pedido no puede fallar porque una notificación no salga.
+ *
+ * El transporte son **notificaciones push del navegador**. Antes era WhatsApp y
+ * se sacó por dos motivos: la vía oficial obliga a cada restaurante a tener
+ * cuenta de Meta con plantillas aprobadas una por una, y la vía por QR arriesga
+ * que le bloqueen la línea del negocio — el número impreso en su menú y en su
+ * puerta, con todo el historial de sus clientes.
+ *
+ * El push llega al teléfono con la página cerrada, no depende de terceros y no
+ * se puede bloquear. Su límite honesto: en iPhone funciona sólo si el cliente
+ * agrega el sitio a su pantalla de inicio, porque Apple lo exige.
+ *
+ * Va `tenantId` en todas: la misma persona puede pedir en dos restaurantes
+ * distintos, y cada uno le habla de lo suyo.
  */
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly whatsapp: WhatsAppAdapter) {}
+  constructor(private readonly push: PushService) {}
 
-  async notifyOrderCompleted(phone: string | null, total: string): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'pedido_completado', { total });
-  }
-
-  /** El pedido salió de cocina. Para take away/delivery el cliente dejó teléfono
-   *  y le llega el aviso; en dine-in normalmente no hay teléfono (al mozo se le
-   *  avisa por el socket, no por WhatsApp). */
-  async notifyOrderReady(phone: string | null, reference: string | null): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'pedido_listo', { referencia: reference ?? 'para retirar' });
-  }
-
-  async notifyDeliveryAssigned(phone: string | null, estimatedMinutes: number | null): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'delivery_asignado', {
-      eta: estimatedMinutes != null ? String(estimatedMinutes) : 'a confirmar',
+  async notifyOrderCompleted(tenantId: string, phone: string | null, total: string): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: 'Pedido cobrado',
+      cuerpo: `Listo, tu pedido de ${total} quedó pago. ¡Gracias!`,
+      etiqueta: 'pedido',
     });
   }
 
-  async notifyDeliveryCompleted(phone: string | null): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'delivery_entregado', {});
+  /**
+   * Salió de cocina. En dine-in normalmente no hay teléfono: al mozo se le
+   * avisa por el socket, que ya tiene la pantalla abierta delante.
+   */
+  async notifyOrderReady(tenantId: string, phone: string | null, reference: string | null): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: '¡Tu pedido está listo!',
+      cuerpo: reference ? `Ya podés retirarlo — ${reference}` : 'Ya podés retirarlo.',
+      etiqueta: 'pedido',
+    });
+  }
+
+  async notifyDeliveryAssigned(
+    tenantId: string,
+    phone: string | null,
+    estimatedMinutes: number | null,
+    trackingToken?: string | null,
+  ): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: 'Tu pedido va en camino',
+      cuerpo:
+        estimatedMinutes != null ? `Llega en unos ${estimatedMinutes} minutos.` : 'Un repartidor ya lo tiene.',
+      // Al tocar el aviso se abre el mapa del seguimiento, que es exactamente
+      // lo que la persona quiere hacer a continuación.
+      url: trackingToken ? `/track/${trackingToken}` : undefined,
+      etiqueta: 'delivery',
+    });
+  }
+
+  async notifyDeliveryCompleted(tenantId: string, phone: string | null): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: 'Pedido entregado',
+      cuerpo: '¡Que lo disfrutes! Gracias por tu compra.',
+      etiqueta: 'delivery',
+    });
   }
 
   /** Recordatorio de reserva (lo dispara el cron unas horas antes). */
   async notifyReservationReminder(
+    tenantId: string,
     phone: string | null,
     name: string,
     when: Date,
     partySize: number,
   ): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'recordatorio_reserva', {
-      nombre: name,
-      fecha: when.toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }),
-      personas: String(partySize),
+    await this.push.avisar(tenantId, phone, {
+      titulo: 'Te esperamos hoy',
+      cuerpo: `${name}, tu reserva para ${partySize} es a las ${when.toLocaleString('es', { timeStyle: 'short' })}.`,
+      etiqueta: 'reserva',
     });
   }
 
-  /** Encuesta de calificación post-visita: el cron manda el link unas horas
-   *  después de cerrar el pedido. `link` es la URL pública `/encuesta/:token`. */
-  async notifyFeedbackRequest(phone: string | null, link: string): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'encuesta_calificacion', { link });
+  /** Encuesta post-visita: el cron la manda unas horas después de cerrar el pedido. */
+  async notifyFeedbackRequest(tenantId: string, phone: string | null, link: string): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: '¿Cómo estuvo todo?',
+      cuerpo: 'Contanos en 10 segundos, nos ayuda un montón.',
+      url: link,
+      etiqueta: 'encuesta',
+    });
   }
 
-  /** Campaña de marketing a un segmento de clientes. `mensaje` es el texto que
-   *  arma el dueño. Requiere una plantilla de marketing aprobada en Meta. */
-  async notifyMarketingCampaign(phone: string | null, message: string): Promise<void> {
-    if (!phone) return;
-    await this.safeSend(phone, 'campana_marketing', { mensaje: message });
-  }
-
-  private async safeSend(to: string, templateName: string, variables: Record<string, string>): Promise<void> {
-    try {
-      await this.whatsapp.sendTemplateMessage({ to, templateName, variables });
-    } catch (err) {
-      logger.error({ err, to, templateName }, 'Fallo al enviar notificación de WhatsApp (no bloqueante)');
-    }
+  /** Campaña a un segmento de clientes. `message` es el texto que arma el dueño. */
+  async notifyMarketingCampaign(tenantId: string, phone: string | null, message: string): Promise<void> {
+    await this.push.avisar(tenantId, phone, {
+      titulo: 'Novedades',
+      cuerpo: message,
+      etiqueta: 'marketing',
+    });
   }
 }

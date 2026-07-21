@@ -5,7 +5,7 @@ import { ReservationsService } from './reservations.service';
 import { ReservationRemindersService } from './reservation-reminders.service';
 
 @Module({
-  // IntegrationsModule: NotificationsService para el recordatorio por WhatsApp.
+  // IntegrationsModule: NotificationsService para el recordatorio por los avisos.
   imports: [IntegrationsModule],
   controllers: [ReservationsController],
   providers: [ReservationsService, ReservationRemindersService],

@@ -16,7 +16,7 @@ import { GuestOrderLineDto } from './create-guest-order.dto';
 
 /**
  * Pedido self-service desde el link público COMPARTIBLE de la sucursal
- * (`/r/:slug`) — el que se pone en la bio de Instagram/WhatsApp. A diferencia
+ * (`/r/:slug`) — el que se pone en la bio de Instagram/los avisos. A diferencia
  * de `CreateGuestOrderDto` (QR de mesa → siempre DINE_IN), acá el cliente
  * elige entre delivery y retiro, y el pago es al recibir: no hay pasarela.
  *

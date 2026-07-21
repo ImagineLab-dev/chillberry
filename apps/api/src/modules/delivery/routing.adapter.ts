@@ -37,7 +37,7 @@ const TIMEOUT_MS = 4000;
  * > clientes dejan de ver a su repartidor.
  *
  * Sin motor configurado queda en modo sandbox: devuelve `null` y el seguimiento
- * funciona igual, con los dos puntos y sin línea. Mismo criterio que WhatsApp y
+ * funciona igual, con los dos puntos y sin línea. Mismo criterio que los avisos y
  * el cobro: que falte una integración degrada la experiencia, no rompe nada.
  *
  * NUNCA lanza. Si el motor está caído o lento, se loguea y se sigue sin ruta:

@@ -15,7 +15,6 @@ export * from './adapters/fiscal-adapter';
 export * from './delivery';
 export * from './subscription-status';
 export * from './adapters/subscription-provider.adapter';
-export * from './adapters/whatsapp-adapter';
 export * from './currency';
 export * from './brand-color';
 export * from './discount';
