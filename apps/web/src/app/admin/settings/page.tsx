@@ -269,12 +269,17 @@ export default function SettingsPage() {
 
       {!loading && settings && isOwner && (
         <>
-          <Alert tone="warn" className="mb-4 max-w-md">
+          <Alert tone="warn" className="mb-4 max-w-2xl">
             Cambiar el país/moneda no convierte los precios ya cargados en el menú — es solo la referencia de moneda
             que se muestra. Después de cambiarla, conviene revisar los precios del menú.
           </Alert>
 
-          <form onSubmit={onSave} className="panel max-w-md space-y-4 p-5">
+          {/* Grilla de dos columnas en escritorio: antes cada panel era `max-w-md`
+              y se apilaban en una columna angosta, dejando media pantalla vacía a
+              la derecha. `items-start` para que cada panel mida su propio alto y
+              no se estiren para emparejarse. */}
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+          <form onSubmit={onSave} className="panel space-y-4 p-5">
             <div className="space-y-1.5">
               <label htmlFor="tenant-name" className="label">
                 Nombre del restaurante
@@ -444,7 +449,7 @@ export default function SettingsPage() {
           </form>
 
           {/* ---- Convertir precios del menú (al cambiar de moneda) ---- */}
-          <div className="panel mt-6 max-w-md space-y-4 p-5">
+          <div className="panel space-y-4 p-5">
             <div className="flex items-center gap-2">
               <Calculator className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
               <h2 className="font-heading text-lg font-semibold">Convertir precios del menú</h2>
@@ -498,7 +503,7 @@ export default function SettingsPage() {
           </div>
 
           {/* ---- Programa de puntos (fidelización) ---- */}
-          <form onSubmit={onSaveLoyalty} className="panel mt-6 max-w-md space-y-4 p-5">
+          <form onSubmit={onSaveLoyalty} className="panel space-y-4 p-5">
             <div className="flex items-center gap-2">
               <Gift className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
               <h2 className="font-heading text-lg font-semibold">Programa de puntos</h2>
@@ -567,6 +572,7 @@ export default function SettingsPage() {
               {savingLoyalty ? 'Guardando...' : 'Guardar programa de puntos'}
             </button>
           </form>
+          </div>
         </>
       )}
     </div>

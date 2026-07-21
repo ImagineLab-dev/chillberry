@@ -362,8 +362,16 @@ export default function WaiterPage() {
           <Users className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />
           <h1 className="font-heading text-xl font-semibold">Meseros — Mapa de mesas</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} aria-label="Sucursal" className="input">
+        {/* flex-wrap: en el teléfono los controles bajan a otra línea en vez de
+            desbordar (el mozo trabaja desde el celular). El select se acota para
+            que un nombre de sucursal largo no empuje todo fuera de pantalla. */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <select
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+            aria-label="Sucursal"
+            className="input min-w-0 max-w-[45vw] sm:max-w-none"
+          >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -416,7 +424,10 @@ export default function WaiterPage() {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8">
+      {/* 3 columnas en el teléfono, no 4: con 4, cada tarjeta quedaba en ~80px
+          y el badge de estado ("En espera") no entraba y desbordaba la pantalla.
+          Con 3 la tarjeta respira y el estado se lee. */}
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-6 md:grid-cols-8">
         {tables.map((t) => {
           const active = t.orders[0];
           const badge = tableBadge(t, active);
