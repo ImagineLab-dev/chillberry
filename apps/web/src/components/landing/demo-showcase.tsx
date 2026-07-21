@@ -104,7 +104,15 @@ function ScreenFrame({ children }: { children: React.ReactNode }) {
         <span className="h-2.5 w-2.5 rounded-full bg-warn/60" />
         <span className="h-2.5 w-2.5 rounded-full bg-ok/60" />
       </div>
-      <div className="overflow-x-auto">{children}</div>
+      {/* Alto RESERVADO, no automático.
+          Cada escena mide distinto (medido: de 176 px a 601 px), así que si el
+          marco se adapta al contenido, cambia de alto en cada paso y empuja
+          todo lo que viene abajo. En el celular es insoportable: estás leyendo
+          la sección siguiente y el texto se te escapa solo cada 2,6 segundos.
+          Se reserva el alto de la escena más alta (Cocina, paso 2) y nada se
+          mueve nunca. `items-start` para que las escenas cortas queden arriba
+          en vez de flotar centradas. */}
+      <div className="flex min-h-[620px] items-start overflow-x-auto sm:min-h-[570px]">{children}</div>
     </div>
   );
 }
@@ -235,21 +243,24 @@ const WAITER_STEPS = [
   'La mesa pide la cuenta — aparece en el mapa',
 ];
 
+// Etiquetas cortas a propósito: son chips dentro de una tarjeta angosta, y el
+// mozo las lee de un vistazo cruzando el salón. "Listo para servir" no entra en
+// el ancho de una tarjeta de mesa y se cortaba a la mitad.
 const WAITER_BADGE = [
   { label: 'Libre', tone: 'badge-ok' },
   { label: 'En espera', tone: 'badge-neutral' },
-  { label: 'Listo para servir', tone: 'badge-ok' },
-  { label: 'Pidió la cuenta', tone: 'badge-warn' },
+  { label: 'Listo', tone: 'badge-ok' },
+  { label: 'Pide cuenta', tone: 'badge-warn' },
 ];
 
+// Seis mesas, no ocho: con ocho columnas cada tarjeta queda en ~84 px y ningún
+// estado entra entero.
 const OTHER_TABLES = [
-  { code: '1', label: 'En preparación', tone: 'badge-warn', total: '₲ 64.000' },
+  { code: '1', label: 'Preparando', tone: 'badge-warn', total: '₲ 64.000' },
   { code: '2', label: 'Libre', tone: 'badge-ok', total: null },
-  { code: '4', label: 'Pidió la cuenta', tone: 'badge-warn', total: '₲ 87.000' },
+  { code: '4', label: 'Pide cuenta', tone: 'badge-warn', total: '₲ 87.000' },
   { code: '5', label: 'Libre', tone: 'badge-ok', total: null },
   { code: '6', label: 'Reservada', tone: 'badge-warn', total: null },
-  { code: '7', label: 'En espera', tone: 'badge-neutral', total: '₲ 45.000' },
-  { code: '8', label: 'Libre', tone: 'badge-ok', total: null },
 ];
 
 function DemoWaiter({ step }: { step: number }) {
@@ -257,7 +268,7 @@ function DemoWaiter({ step }: { step: number }) {
   const hasOrder = step >= 1;
 
   return (
-    <div className="min-w-[760px] p-4">
+    <div className="min-w-[860px] p-4">
       {step === 2 && (
         <p className="mb-3 flex items-center gap-2 rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-sm font-semibold text-ok-foreground">
           <Check className="h-4 w-4 shrink-0" />
@@ -265,7 +276,7 @@ function DemoWaiter({ step }: { step: number }) {
         </p>
       )}
 
-      <div className="mb-3 grid grid-cols-8 gap-2">
+      <div className="mb-3 grid grid-cols-6 gap-2">
         <div className={`card p-3 ${focusRing(true)}`}>
           <p className="mb-1.5 font-heading text-base font-semibold">Mesa 3</p>
           <span className={`badge ${badge.tone}`}>{badge.label}</span>
@@ -801,7 +812,13 @@ export function DemoShowcase() {
 
       {/* Narración del paso actual: sin esto el visitante ve cambiar cosas y no
           sabe qué está mirando. `aria-live` para que también se anuncie. */}
-      <p key={`${tab}-${step}`} className="demo-enter mb-3 text-center text-base font-medium" aria-live="polite">
+      {/* Dos renglones reservados: estas frases envuelven en 1 o 2 líneas según
+          el ancho, y sin alto fijo el marco entero sube y baja con cada paso. */}
+      <p
+        key={`${tab}-${step}`}
+        className="demo-enter mb-3 flex min-h-[3.5rem] items-center justify-center text-center text-base font-medium sm:min-h-[1.75rem]"
+        aria-live="polite"
+      >
         {scene.steps[step]}
       </p>
 

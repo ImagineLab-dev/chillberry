@@ -218,7 +218,10 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-14 text-center sm:pt-20">
         <span className="badge badge-primary mb-5">Para restaurantes, cafés y food trucks</span>
         <h1 className="mx-auto max-w-3xl font-heading text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
-          Todo tu restaurante, <span className="text-primary">en una sola pantalla</span>
+          {/* `block` para que la frase destacada arranque siempre en su propia
+              línea. Si se deja fluir, el quiebre cae donde entre y el "en"
+              queda huérfano al final del primer renglón. */}
+          Todo tu restaurante, <span className="block text-primary">en una sola pantalla</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
           Pedidos, cocina, caja, delivery y carta con QR trabajando juntos. Sin papeles, sin planillas y sin pagar
