@@ -8,6 +8,7 @@ import { DeliveryService } from './delivery.service';
 import { DriversService } from './drivers.service';
 import { ZonesService } from './zones.service';
 import { DeliveryGateway } from './delivery.gateway';
+import { RoutingAdapter } from './routing.adapter';
 import { DeliveryReassignService } from './delivery-reassign.service';
 
 @Module({
@@ -15,7 +16,7 @@ import { DeliveryReassignService } from './delivery-reassign.service';
   // (DriversService.register lo valida).
   imports: [JwtModule.register({}), IntegrationsModule, BillingModule],
   controllers: [DeliveryController, TrackingController],
-  providers: [DeliveryService, DriversService, ZonesService, DeliveryGateway, DeliveryReassignService],
+  providers: [DeliveryService, DriversService, ZonesService, DeliveryGateway, DeliveryReassignService, RoutingAdapter],
   exports: [DeliveryService, DriversService],
 })
 export class DeliveryModule {}

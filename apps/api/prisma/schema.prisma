@@ -1285,6 +1285,16 @@ model Delivery {
   /// de tracking una vez entregado. Alimenta `Driver.ratingAvg`.
   rating            Int?           @map("rating")
   ratingComment     String?        @map("rating_comment")
+  /// Ruta por calles hasta el domicilio, cacheada. Se recalcula sólo por
+  /// antigüedad o desvío real (ver route-cache.ts): pedirla en cada ping de
+  /// ubicación agotaría la cuota del servicio de ruteo en un día.
+  routeGeometry     Json?          @map("route_geometry")
+  routeDistanceM    Int?           @map("route_distance_m")
+  routeDurationS    Int?           @map("route_duration_s")
+  /// Desde dónde se calculó, para medir cuánto se desvió el repartidor.
+  routeFromLat      Decimal?       @map("route_from_lat") @db.Decimal(9, 6)
+  routeFromLng      Decimal?       @map("route_from_lng") @db.Decimal(9, 6)
+  routeUpdatedAt    DateTime?      @map("route_updated_at") @db.Timestamptz(6)
   assignedAt        DateTime?      @map("assigned_at")
   acceptedAt        DateTime?      @map("accepted_at")
   pickedUpAt        DateTime?      @map("picked_up_at")

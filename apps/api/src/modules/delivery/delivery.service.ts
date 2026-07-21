@@ -14,6 +14,8 @@ import { NotificationsService } from '../integrations/notifications.service';
 import { BillingService } from '../billing/billing.service';
 import { DriversService } from './drivers.service';
 import { DeliveryGateway } from './delivery.gateway';
+import { RoutingAdapter } from './routing.adapter';
+import { necesitaRecalculo } from './route-cache';
 import { RequestDeliveryDto } from './dto/request-delivery.dto';
 import { DeliverDto } from './dto/deliver.dto';
 import { CancelDeliveryDto } from './dto/cancel-delivery.dto';
@@ -52,6 +54,7 @@ export class DeliveryService {
     private readonly gateway: DeliveryGateway,
     private readonly notifications: NotificationsService,
     private readonly billing: BillingService,
+    private readonly routing: RoutingAdapter,
   ) {}
 
   async requestDelivery(orderId: string, dto: RequestDeliveryDto) {
@@ -542,15 +545,94 @@ export class DeliveryService {
       if (location) liveLocation = { lat: Number(location.lat), lng: Number(location.lng) };
     }
 
+    // Ruta por calles desde donde está el repartidor hasta el domicilio. Sólo
+    // tiene sentido si hay ambos extremos; si el servicio de ruteo no está
+    // configurado o falla, `ruta` queda en null y el seguimiento funciona igual.
+    const ruta =
+      trackable && liveLocation && delivery.lat != null && delivery.lng != null
+        ? await this.rutaHastaDomicilio(delivery, liveLocation)
+        : null;
+
     return {
       status: delivery.status,
       estimatedMinutes: delivery.estimatedMinutes,
       driverName: trackable ? (delivery.driver?.user.name ?? null) : null,
       location: trackable ? liveLocation : null,
+      destino:
+        trackable && delivery.lat != null && delivery.lng != null
+          ? { lat: Number(delivery.lat), lng: Number(delivery.lng) }
+          : null,
+      route: ruta?.coords ?? null,
+      routeDistanceM: ruta?.distanciaM ?? null,
+      // Minutos que estima el motor de ruteo con la posición REAL del
+      // repartidor. Es distinto de `estimatedMinutes`, que es el compromiso
+      // que cargó el restaurante para la zona y no se recalcula nunca.
+      routeMinutes: ruta ? Math.max(1, Math.round(ruta.duracionS / 60)) : null,
       // El cliente puede calificar una vez entregado y si todavía no lo hizo.
       canRate: delivery.status === 'DELIVERED' && delivery.rating == null,
       rated: delivery.rating != null,
     };
+  }
+
+  /**
+   * Devuelve la ruta cacheada, o pide una nueva si hace falta.
+   *
+   * El seguimiento se consulta cada pocos segundos; pedir la ruta cada vez
+   * agotaría la cuota diaria del servicio con un puñado de entregas. Ver
+   * `necesitaRecalculo` para cuándo se considera que la cacheada sirve.
+   */
+  private async rutaHastaDomicilio(
+    delivery: { id: string; lat: unknown; lng: unknown; routeGeometry: unknown; routeDistanceM: number | null; routeDurationS: number | null; routeFromLat: unknown; routeFromLng: unknown; routeUpdatedAt: Date | null },
+    posicion: { lat: number; lng: number },
+  ) {
+    const guardada = {
+      geometry: delivery.routeGeometry,
+      desde:
+        delivery.routeFromLat != null && delivery.routeFromLng != null
+          ? { lat: Number(delivery.routeFromLat), lng: Number(delivery.routeFromLng) }
+          : null,
+      actualizada: delivery.routeUpdatedAt,
+    };
+
+    if (!necesitaRecalculo(guardada, posicion)) {
+      return {
+        coords: delivery.routeGeometry as Array<[number, number]>,
+        distanciaM: delivery.routeDistanceM ?? 0,
+        duracionS: delivery.routeDurationS ?? 0,
+      };
+    }
+
+    const nueva = await this.routing.obtenerRuta(posicion, {
+      lat: Number(delivery.lat),
+      lng: Number(delivery.lng),
+    });
+
+    // El servicio no está configurado o falló: se devuelve lo último que había
+    // (aunque esté vencido) en vez de dejar al cliente sin nada. Una ruta de
+    // hace unos minutos sigue siendo mucho mejor que un mapa pelado.
+    if (!nueva) {
+      return delivery.routeGeometry
+        ? {
+            coords: delivery.routeGeometry as Array<[number, number]>,
+            distanciaM: delivery.routeDistanceM ?? 0,
+            duracionS: delivery.routeDurationS ?? 0,
+          }
+        : null;
+    }
+
+    await this.prisma.delivery.update({
+      where: { id: delivery.id },
+      data: {
+        routeGeometry: nueva.coords,
+        routeDistanceM: nueva.distanciaM,
+        routeDurationS: nueva.duracionS,
+        routeFromLat: posicion.lat,
+        routeFromLng: posicion.lng,
+        routeUpdatedAt: new Date(),
+      },
+    });
+
+    return nueva;
   }
 
   /**

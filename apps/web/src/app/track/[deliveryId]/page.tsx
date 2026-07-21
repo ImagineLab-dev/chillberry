@@ -14,6 +14,13 @@ type Tracking = {
   estimatedMinutes: number | null;
   driverName: string | null;
   location: { lat: number; lng: number } | null;
+  /** La casa del cliente, para poder encuadrar el mapa con los dos extremos. */
+  destino: { lat: number; lng: number } | null;
+  /** Camino por las calles. Null si el ruteo no está configurado o falló. */
+  route: Array<[number, number]> | null;
+  routeDistanceM: number | null;
+  /** Minutos que estima el motor de ruteo desde la posición REAL del repartidor. */
+  routeMinutes: number | null;
   /** El cliente puede calificar (entregado y sin calificar aún). */
   canRate: boolean;
   rated: boolean;
@@ -160,11 +167,25 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
               {STATUS_LABEL[tracking.status] ?? tracking.status}
             </p>
 
-            {tracking.estimatedMinutes != null && (
+            {/* Se prefiere el tiempo del motor de ruteo: sale de dónde está el
+                repartidor AHORA. `estimatedMinutes` es el compromiso que cargó
+                el restaurante para la zona y no se recalcula nunca, así que
+                sólo se muestra cuando no hay ruta. */}
+            {tracking.routeMinutes != null ? (
               <p className="mt-3 text-base text-muted-foreground">
-                Tiempo estimado:{' '}
-                <span className="tabular font-semibold text-foreground">~{tracking.estimatedMinutes} min</span>
+                Llega en{' '}
+                <span className="tabular font-semibold text-foreground">~{tracking.routeMinutes} min</span>
+                {tracking.routeDistanceM != null && (
+                  <span className="tabular"> · a {(tracking.routeDistanceM / 1000).toFixed(1)} km</span>
+                )}
               </p>
+            ) : (
+              tracking.estimatedMinutes != null && (
+                <p className="mt-3 text-base text-muted-foreground">
+                  Tiempo estimado:{' '}
+                  <span className="tabular font-semibold text-foreground">~{tracking.estimatedMinutes} min</span>
+                </p>
+              )
             )}
 
             {tracking.driverName && (
@@ -186,7 +207,19 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
                       label: tracking.driverName ?? 'Repartidor',
                       kind: 'driver',
                     },
+                    ...(tracking.destino
+                      ? [
+                          {
+                            id: 'destino',
+                            lat: tracking.destino.lat,
+                            lng: tracking.destino.lng,
+                            label: 'Tu dirección',
+                            kind: 'destino' as const,
+                          },
+                        ]
+                      : []),
                   ]}
+                  route={tracking.route}
                   height={220}
                 />
                 <a

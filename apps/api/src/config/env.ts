@@ -78,6 +78,23 @@ const EnvSchemaBase = z.object({
    */
   MAIL_SANDBOX: z.enum(['true', 'false']).default('false'),
 
+  // Ruteo por calles para el seguimiento de entregas.
+  //
+  // `osrm` apunta a una instancia PROPIA: sin key, sin cuota, sin límite. Es la
+  // opción recomendada — el extracto de Paraguay pesa ~150 MB y corre de sobra
+  // en el mismo servidor.
+  //
+  // NO apuntar ROUTING_BASE_URL al demo público router.project-osrm.org: su
+  // política lo limita a desarrollo y en producción terminan bloqueándote.
+  //
+  // `ors` (OpenRouteService) es la alternativa hospedada: 2.000 consultas
+  // diarias gratis, requiere ORS_API_KEY.
+  //
+  // Sin configurar, el seguimiento muestra los dos puntos sin la línea.
+  ROUTING_PROVIDER: z.enum(['osrm', 'ors']).default('osrm'),
+  ROUTING_BASE_URL: z.string().url().optional(),
+  ORS_API_KEY: z.string().min(1).optional(),
+
   // Bot-check (Cloudflare Turnstile) en register/login/pedido público por QR.
   // Default = clave de prueba de Cloudflare que siempre aprueba (ver
   // INSECURE_DEFAULTS) — funciona sin cuenta propia en dev, pero el
@@ -133,6 +150,12 @@ function warnSandboxEnProduccion(env: AppEnv): void {
   }
   if (!env.REDIS_URL) {
     enSandbox.push('Rate limiting en memoria (sin REDIS_URL el límite es POR INSTANCIA: con varias réplicas se afloja)');
+  }
+  const ruteoListo = env.ROUTING_PROVIDER === 'osrm' ? Boolean(env.ROUTING_BASE_URL) : Boolean(env.ORS_API_KEY);
+  if (!ruteoListo) {
+    enSandbox.push(
+      'Ruteo de entregas (el seguimiento muestra los puntos pero no dibuja el camino ni calcula el tiempo real)',
+    );
   }
   if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) {
     enSandbox.push(
