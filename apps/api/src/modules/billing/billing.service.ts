@@ -194,7 +194,9 @@ export class BillingService {
 
     await this.tenantPrisma.client.subscription.update({
       where: { id: sub.id },
-      data: { pendingPlanId: plan.id },
+      // El id del proveedor va en la SUSCRIPCIÓN: es lo que trae el webhook de
+      // cada cobro mensual, y es contra lo que hay que correlacionarlo.
+      data: { pendingPlanId: plan.id, providerSubscriptionId: intent.providerSubscriptionId },
     });
 
     const now = new Date();
@@ -250,9 +252,22 @@ export class BillingService {
       );
     }
 
-    const isUpgrade = Number(plan.priceMonthly) >= Number(sub.plan.priceMonthly);
+    const isUpgrade = Number(plan.priceMonthly) > Number(sub.plan.priceMonthly);
 
-    if (!isUpgrade) {
+    // UN UPGRADE SE COBRA. Antes se aplicaba en el acto, sin pasar por ningún
+    // cobro: el dueño leía la lista de planes, tomaba el más caro y se lo
+    // asignaba gratis. Los límites de sucursales y usuarios —que son la única
+    // barrera de pago— se saltaban solos.
+    //
+    // Se delega en `subscribe`, que es el mismo camino del alta: crea el
+    // checkout, deja el plan en `pendingPlanId` y lo aplica recién cuando llega
+    // el webhook del cobro aprobado.
+    if (isUpgrade) {
+      const checkout = await this.subscribe(plan.id);
+      return { ...checkout, applied: 'pending_payment' as const };
+    }
+
+    {
       const limits = plan.limits as unknown as PlanLimits;
       const branchCount = await this.tenantPrisma.client.branch.count();
       if (!canDowngradeToPlan(branchCount, limits.maxBranches)) {
@@ -337,44 +352,91 @@ export class BillingService {
       },
     });
 
-    const invoice = await this.prisma.subscriptionInvoice.findFirst({
-      where: { providerPaymentId: body.providerSubscriptionId },
+    // Se resuelve por la SUSCRIPCIÓN, no por una factura. El webhook trae el id
+    // de la suscripción y llega una vez por mes; buscar una factura con ese id
+    // sólo acertaba el primer cobro (hay una sola factura por suscripción), y
+    // del segundo en adelante reescribía esa misma y dejaba `renewalDate` en
+    // una fecha ya pasada, sin historial de lo cobrado.
+    const sub = await this.prisma.subscription.findFirst({
+      where: { providerSubscriptionId: body.providerSubscriptionId },
     });
-    if (!invoice) {
+    if (!sub) {
       throw new NotFoundException(
-        `No se encontró un SubscriptionInvoice con providerSubscriptionId ${body.providerSubscriptionId}`,
+        `No se encontró una suscripción con providerSubscriptionId ${body.providerSubscriptionId}`,
       );
     }
 
+    // Factura del período que se está cobrando: la que quedó PENDING al
+    // contratar (primer cobro) o ninguna todavía (renovación).
+    const pendiente = await this.prisma.subscriptionInvoice.findFirst({
+      where: { subscriptionId: sub.id, status: 'PENDING' },
+      orderBy: { periodStart: 'desc' },
+    });
+
     if (body.eventType === 'SUBSCRIPTION_APPROVED') {
-      await this.prisma.subscriptionInvoice.update({
-        where: { id: invoice.id },
-        data: { status: 'PAID', paidAt: new Date() },
-      });
+      const planId = sub.pendingPlanId ?? sub.planId;
+      let periodEnd: Date;
+
+      if (pendiente) {
+        await this.prisma.subscriptionInvoice.update({
+          where: { id: pendiente.id },
+          data: { status: 'PAID', paidAt: new Date(), providerPaymentId: body.providerSubscriptionId },
+        });
+        periodEnd = pendiente.periodEnd;
+      } else {
+        // RENOVACIÓN: se emite la factura del período nuevo. Arranca donde
+        // terminó el anterior, no en la fecha de hoy — si el webhook llega con
+        // demora, el cliente no pierde los días que ya pagó.
+        const anterior = await this.prisma.subscriptionInvoice.findFirst({
+          where: { subscriptionId: sub.id },
+          orderBy: { periodEnd: 'desc' },
+        });
+        const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
+        const periodStart = anterior?.periodEnd ?? new Date();
+        periodEnd = addDays(periodStart, BILLING_PERIOD_DAYS);
+
+        await this.prisma.subscriptionInvoice.create({
+          data: {
+            tenantId: sub.tenantId,
+            subscriptionId: sub.id,
+            planId,
+            amount: plan?.priceMonthly ?? 0,
+            currency: plan?.currency ?? 'USD',
+            status: 'PAID',
+            paidAt: new Date(),
+            providerPaymentId: body.providerSubscriptionId,
+            periodStart,
+            periodEnd,
+          },
+        });
+      }
+
       await this.prisma.subscription.update({
-        where: { id: invoice.subscriptionId },
+        where: { id: sub.id },
         data: {
-          planId: invoice.planId,
+          planId,
           pendingPlanId: null,
           status: 'ACTIVE',
-          renewalDate: invoice.periodEnd,
+          renewalDate: periodEnd,
           pastDueSince: null,
         },
       });
     } else if (body.eventType === 'SUBSCRIPTION_FAILED') {
-      await this.prisma.subscriptionInvoice.update({
-        where: { id: invoice.id },
-        data: { status: 'FAILED' },
-      });
+      if (pendiente) {
+        await this.prisma.subscriptionInvoice.update({
+          where: { id: pendiente.id },
+          data: { status: 'FAILED' },
+        });
+      }
       await this.prisma.subscription.update({
-        where: { id: invoice.subscriptionId },
+        where: { id: sub.id },
         data: { status: 'PAST_DUE', pastDueSince: new Date() },
       });
     }
 
     await this.prisma.paymentWebhookEvent.update({
       where: { id: event.id },
-      data: { processedAt: new Date(), tenantId: invoice.tenantId },
+      data: { processedAt: new Date(), tenantId: sub.tenantId },
     });
 
     return { ok: true, duplicate: false };

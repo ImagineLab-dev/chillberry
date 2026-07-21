@@ -1456,6 +1456,15 @@ model Subscription {
   /// plan nuevo, en vez de esperar a `renewalDate`. El campo queda para
   /// cuando se agregue el cron `subscription-billing` de la Fase 8.
   pendingPlanId String?            @map("pending_plan_id") @db.Uuid
+  /// Id de la suscripción del lado del proveedor (dLocal). Es lo que permite
+  /// correlacionar CADA cobro mensual con esta suscripción.
+  ///
+  /// Antes esa correlación se hacía contra `SubscriptionInvoice.providerPaymentId`,
+  /// pero sólo existe UNA factura por suscripción: del segundo mes en adelante
+  /// el webhook encontraba esa misma factura, la volvía a marcar pagada y
+  /// dejaba `renewalDate` en la fecha de vencimiento original — o sea, en el
+  /// pasado. Y no quedaba historial de qué se cobró cada mes.
+  providerSubscriptionId String?       @unique @map("provider_subscription_id")
   trialEndsAt   DateTime?          @map("trial_ends_at")
   renewalDate   DateTime?          @map("renewal_date")
   pastDueSince  DateTime?          @map("past_due_since")

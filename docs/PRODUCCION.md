@@ -189,6 +189,13 @@ mucho 15 minutos después.
   el día que se corrompa, no hay de dónde volver.
 - **Pagos con tarjeta del comensal**: sólo existe el adaptador simulado. Efectivo
   es lo único real.
+- **El cobro de las suscripciones NO está activo.** `BILLING_PROVIDER=mock` y
+  `DLOCAL_API_BASE` apunta al sandbox, así que hoy ningún restaurante paga nada.
+  La lógica está arreglada y probada contra el proveedor simulado (renovación
+  mensual con factura por período, upgrades que pasan por el cobro), pero
+  **nunca salió un request real contra dLocal, ni siquiera en su sandbox**.
+  Para activarlo: `BILLING_PROVIDER=dlocal`, las dos claves, y recién cuando
+  esté probado en sandbox, mover `DLOCAL_API_BASE` al host de producción.
 - **El repartidor puede auto-calificarse 5/5.** El link de seguimiento usa la
   clave del pedido, que él conoce: marca entregado y califica antes que el
   cliente. Eso le sube el promedio con el que el sistema reparte pedidos y

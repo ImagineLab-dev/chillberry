@@ -205,7 +205,11 @@ test.describe('alta: un fallo posterior NO puede quemar el código', () => {
    * revienta, el código se restaura. Esto fija que un código válido siga
    * sirviendo mientras no se haya creado la cuenta.
    */
-  const stamp = Date.now().toString().slice(-9);
+  // `+2` para no chocar con los otros describes de este archivo: los tres
+  // evalúan `Date.now()` al cargar el módulo, o sea en el mismo milisegundo, y
+  // sin esto compartirían email. Mismo truco que usa el describe de los 5
+  // intentos con `+1`.
+  const stamp = (Date.now() + 2).toString().slice(-9);
   const alta = datosDeAlta(stamp);
 
   test('el mismo código sigue sirviendo tras un intento fallido por email duplicado', async ({ request }) => {
