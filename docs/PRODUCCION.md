@@ -55,6 +55,56 @@ docker exec -i $(docker ps -qf name=chillberry_postgres)   psql -U chillberry -d
 Es idempotente. NO uses `prisma/seed.ts`: ese crea además el restaurante de
 demostración con datos de prueba.
 
+## Respaldos
+
+`infra/backup.sh`, instalado en `/opt/chillberry/backup.sh` y disparado por cron
+todos los días a las 03:30 (el local ya cerró y nadie está cobrando).
+
+Guarda **la base** (`pg_dump -Fc`, comprimido y con restauración selectiva) y
+**las imágenes** que suben los restaurantes, que viven en un volumen aparte.
+
+Conserva **14 diarios** y **6 mensuales** (copia del día 1). Con la base en
+10 MB eso es irrelevante en disco, pero el techo existe igual: crecer sin
+límite termina en un disco lleno, y un disco lleno tira abajo Postgres, no sólo
+el respaldo.
+
+**El orden es deliberado**: crear → verificar → recién ahí rotar. Al revés
+—borrar viejos para hacer lugar— un fallo del volcado deja cero respaldos, que
+es justo el escenario del que uno se quiere proteger. Si el volcado nuevo no
+pasa la verificación (`pg_restore --list`, que lo lee de verdad y detecta un
+archivo truncado), no se borra nada.
+
+Si algo falla, **llega un mail a soporte@chillberry.app**. Un respaldo que dejó
+de correr y nadie se entera es igual a no tener respaldo.
+
+### Restaurar
+
+```bash
+# Ver qué hay
+ls -lh /opt/chillberry/backups/
+
+# Restaurar en una base de PRUEBA primero — nunca directo sobre la de producción
+pg=$(docker ps -qf name=chillberry_postgres | head -1)
+docker exec $pg psql -U chillberry -d postgres -c "CREATE DATABASE prueba_restore;"
+docker exec -i $pg pg_restore -U chillberry -d prueba_restore --no-owner   < /opt/chillberry/backups/chillberry-AAAAMMDD-HHMM.dump
+
+# Comparar y, si está bien, recién ahí decidir el reemplazo real
+```
+
+### Comprobar que sigue vivo
+
+```bash
+cat /opt/chillberry/backups/ULTIMO-EXITO   # fecha del último respaldo bueno
+tail -20 /opt/chillberry/backups/backup.log
+```
+
+Si esa fecha tiene más de dos días, algo se rompió.
+
+> Esto NO reemplaza un respaldo fuera del servidor. Protege contra corrupción,
+> un borrado accidental o una migración que salió mal — pero si el VPS se
+> pierde entero, se pierde con él. Hostinger hace un respaldo **semanal** de la
+> máquina completa, que es la red de seguridad para ese caso.
+
 ## Ruteo de entregas (OSRM propio)
 
 El seguimiento dibuja el camino real por las calles. El motor es **una
