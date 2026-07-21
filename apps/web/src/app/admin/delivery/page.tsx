@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import { api, type ApiError } from '@/lib/api-client';
 import { Alert, PageHeader } from '@/components/ui';
@@ -47,6 +48,12 @@ export default function DeliveryPage() {
         title="Delivery"
         description="Despachá pedidos, asigná repartidores y configurá tus zonas de envío."
       />
+
+      <AyudaSeccion id="delivery" titulo="Repartidores y zonas">
+        <p>Definí primero las <b>zonas</b> con su tarifa y su tiempo estimado; después sumás repartidores.</p>
+        <p>El cliente sigue su pedido en un mapa con la ruta real hasta su casa, sin instalar nada.</p>
+      </AyudaSeccion>
+
 
       <div className="mb-6 space-y-1.5">
         <label className="label" htmlFor="del-branch">

@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BarChart3,
@@ -155,6 +156,12 @@ export default function ReportsPage() {
   return (
     <div>
       <PageHeader title="Análisis" description="Qué se vende, cuándo y cuánto entra de verdad." />
+
+      <AyudaSeccion id="reports" titulo="Los números del negocio">
+        <p>Ventas, márgenes y lo que más sale. Se arman solos con lo que cobra la caja.</p>
+        <p>Si algo aparece en cero, casi siempre es que todavía no hay ventas cargadas en ese período.</p>
+      </AyudaSeccion>
+
       <AnalyticsTabs />
 
       <div className="mb-6 flex flex-wrap items-end gap-3">

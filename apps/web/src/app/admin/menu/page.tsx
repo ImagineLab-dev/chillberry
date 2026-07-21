@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ImageOff, Package, Pencil, Plus, Settings2, Tags, UtensilsCrossed } from 'lucide-react';
 import { STATION_LABELS, formatMoney, type StationType } from '@chillberry/domain';
@@ -462,6 +463,12 @@ export default function MenuPage() {
   return (
     <div>
       <PageHeader title="Menú" description="Las categorías y los productos que ve el comensal al escanear el QR." />
+
+      <AyudaSeccion id="menu" titulo="Esto es lo que ve tu cliente">
+        <p>Primero creá una <b>categoría</b> (Entradas, Bebidas) y después cargá los platos adentro.</p>
+        <p>Los precios que pongas acá son los que aparecen al escanear el QR y los que cobra la caja.</p>
+      </AyudaSeccion>
+
 
       <div className="mb-6">
         <label htmlFor="menu-branch" className="label mb-1.5">

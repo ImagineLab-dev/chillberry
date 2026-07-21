@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import { Ban, FileText, Plus, ReceiptText, Send, Undo2, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
@@ -326,6 +327,12 @@ export default function OrdersPage() {
   return (
     <div>
       <PageHeader title="Pedidos" description="Lo que está pasando ahora en el salón y en la cocina." />
+
+      <AyudaSeccion id="orders" titulo="Todos los pedidos, de donde vengan">
+        <p>Acá caen los del salón, los del QR y los de delivery, juntos y en vivo.</p>
+        <p>El estado avanza solo a medida que la cocina y el mozo trabajan; desde acá lo corregís si hace falta.</p>
+      </AyudaSeccion>
+
 
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <div>

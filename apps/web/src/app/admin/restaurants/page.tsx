@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import { Building2, ChevronDown, ChevronUp, Pencil, Plus, Power, Store, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
@@ -111,6 +112,12 @@ export default function RestaurantsPage() {
   return (
     <div>
       <PageHeader title="Configuración" description="Tus marcas y sucursales." />
+
+      <AyudaSeccion id="restaurants" titulo="Acá empieza todo">
+        <p>Un <b>restaurante</b> es tu marca; una <b>sucursal</b> es cada local con su dirección.</p>
+        <p>Si tenés un solo local, creás el restaurante y una sucursal adentro. Todo lo demás —la carta, las mesas, la caja— cuelga de la sucursal.</p>
+      </AyudaSeccion>
+
       <SettingsTabs />
 
       <form onSubmit={onCreate} className="mb-6 flex flex-wrap gap-2">

@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import { Pencil, Power, Trash2, UserPlus, UsersRound, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
@@ -171,6 +172,12 @@ export default function StaffPage() {
   return (
     <div>
       <PageHeader title="Configuración" description="Las cuentas de tu personal y qué puede hacer cada uno." />
+
+      <AyudaSeccion id="staff" titulo="Cada uno ve lo que necesita">
+        <p>El <b>dueño</b> ve todos los locales. El <b>gerente</b>, el mozo, el cajero y la cocina quedan atados a la sucursal que les asignes.</p>
+        <p>A quien dejes sin sucursal lo vas a ver marcado en amarillo: ese ve la caja y la facturación de todos tus locales.</p>
+      </AyudaSeccion>
+
       <SettingsTabs />
 
       <form onSubmit={onCreate} className="mb-6 flex flex-wrap gap-2">

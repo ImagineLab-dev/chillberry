@@ -1,5 +1,6 @@
 'use client';
 
+import { PrimerosPasos } from '@/components/primeros-pasos';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -161,6 +162,11 @@ export default function DashboardPage() {
         title={`Hola${firstName ? `, ${firstName}` : ''}`}
         description="Este es el resumen de hoy en tu restaurante."
       />
+
+      {/* Va arriba del resumen a propósito: si al restaurante todavía le falta
+          cargar la carta o las mesas, los números de abajo van a estar en cero
+          y lo útil es decir qué hacer, no mostrar ceros. */}
+      <PrimerosPasos />
 
       {error && <Alert tone="error" className="mb-6">No pudimos cargar el resumen: {error}</Alert>}
 

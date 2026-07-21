@@ -1,5 +1,6 @@
 'use client';
 
+import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Download, Pencil, Plus, Power, QrCode as QrCodeIcon, RefreshCw, Trash2, X } from 'lucide-react';
@@ -300,6 +301,12 @@ export default function TablesPage() {
   return (
     <div>
       <PageHeader title="Mesas" description="Cada mesa tiene su QR: el comensal lo escanea y ve el menú." />
+
+      <AyudaSeccion id="tables" titulo="Cada mesa lleva su propio QR">
+        <p>Al crear una mesa se genera su código. Lo imprimís, lo pegás en la mesa, y el cliente pide desde su teléfono sin instalar nada.</p>
+        <p>Si el QR de una mesa se filtra, podés rotarlo sin cambiar nada más.</p>
+      </AyudaSeccion>
+
 
       <div className="mb-4">
         <label htmlFor="tables-branch" className="label mb-1.5">

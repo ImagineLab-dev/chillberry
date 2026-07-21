@@ -129,7 +129,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:7
+    image: chillberry-web:8
     networks:
       easypanel:
         aliases:
