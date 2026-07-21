@@ -47,12 +47,17 @@ const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/
  * Archivos que App Router genera en la raíz a partir de `app/` (icon.svg,
  * apple-icon, opengraph-image, robots, sitemap...).
  *
+ * Incluye `sw.js`: un service worker que responde con un redirect NO se
+ * registra, y sin él no llega un solo aviso push. Falla en silencio — la página
+ * carga bien y nadie se entera hasta que alguien reclama que no le avisan.
+ *
  * Antes acá sólo figuraba `/favicon.ico`, así que al agregar `app/icon.svg` el
  * middleware lo mandaba a /login: el navegador pedía el favicon y recibía HTML.
  * El síntoma es engañoso — no da 404, "carga" algo — así que se ve como un
  * favicon que no aparece y nada más.
  */
-const ASSETS_RAIZ = /^\/(favicon\.ico|icon\.\w+|apple-icon\.?\w*|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml)$/;
+const ASSETS_RAIZ =
+  /^\/(favicon\.ico|icon\.\w+|apple-icon\.?\w*|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml|sw\.js|manifest\.webmanifest)$/;
 
 // Dominio raíz de la app en producción (ej. 'chillberry.io'). En dev, el host
 // es 'localhost:3000' y los subdominios se prueban con '<sub>.localhost:3000'.
@@ -135,5 +140,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|api).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|sw.js|manifest.webmanifest|api).*)',
+  ],
 };
