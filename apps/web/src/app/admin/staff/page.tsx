@@ -15,8 +15,12 @@ type StaffUser = {
   role: string;
   phone: string | null;
   active: boolean;
+  /** Sucursal donde trabaja. `null` = ve todos los locales (el dueño). */
+  branchId: string | null;
   createdAt: string;
 };
+
+type Sucursal = { id: string; name: string };
 
 type CurrentUser = { id: string; role: string };
 
@@ -24,12 +28,14 @@ const ROLES = ['ADMIN', 'WAITER', 'KITCHEN', 'CASHIER', 'DRIVER'];
 
 export default function StaffPage() {
   const [users, setUsers] = useState<StaffUser[]>([]);
+  const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('WAITER');
+  const [branchId, setBranchId] = useState('');
   const [error, setError] = useState<string | null>(null);
   // Carga inicial del equipo (GET /users). Sin esto, un GET fallido/lento se veía
   // igual que "todavía no cargaste a nadie" (cuenta vacía), sin forma de reintentar.
@@ -41,6 +47,7 @@ export default function StaffPage() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editRole, setEditRole] = useState('');
+  const [editBranchId, setEditBranchId] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -54,6 +61,8 @@ export default function StaffPage() {
     setUsers(await api.get<StaffUser[]>('/users'));
   }
 
+  const nombreSucursal = (id: string | null) => sucursales.find((b) => b.id === id)?.name ?? null;
+
   useEffect(() => {
     load()
       .catch((err) => setLoadError((err as ApiError).message))
@@ -61,16 +70,28 @@ export default function StaffPage() {
     getCurrentUser()
       .then((me) => setCurrentUser({ id: me.id, role: me.role }))
       .catch(() => {});
+    api
+      .get<Sucursal[]>('/branches')
+      .then(setSucursales)
+      .catch(() => {});
   }, []);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/users', { name, email, password, role });
+      await api.post('/users', {
+        name,
+        email,
+        password,
+        role,
+        // Vacío = sin sucursal, y eso significa que ve TODOS los locales.
+        branchId: branchId || undefined,
+      });
       setName('');
       setEmail('');
       setPassword('');
+      setBranchId('');
       await load();
     } catch (err) {
       setError((err as ApiError).message);
@@ -83,6 +104,7 @@ export default function StaffPage() {
     setEditName(u.name);
     setEditPhone(u.phone ?? '');
     setEditRole(u.role);
+    setEditBranchId(u.branchId ?? '');
     setEditPassword('');
   }
 
@@ -102,6 +124,8 @@ export default function StaffPage() {
         name: editName,
         phone: editPhone.trim() ? editPhone.trim() : undefined,
         role: isOwner ? editRole : undefined,
+        // `null` explícito para quitarla: `undefined` sería "no tocar".
+        branchId: editBranchId || null,
         // Solo se manda si el owner/admin escribió una clave nueva (reset).
         password: editPassword.trim() ? editPassword.trim() : undefined,
       });
@@ -181,6 +205,21 @@ export default function StaffPage() {
             </option>
           ))}
         </select>
+        {/* Sucursal: define QUÉ ve. Sin ella el empleado ve y opera sobre todos
+            los locales, que es lo correcto sólo para el dueño. */}
+        <select
+          value={branchId}
+          onChange={(e) => setBranchId(e.target.value)}
+          className="input w-full sm:w-44"
+          aria-label="Sucursal donde trabaja"
+        >
+          <option value="">Todas las sucursales</option>
+          {sucursales.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
         <button className="btn btn-primary">
           <UserPlus className="h-4 w-4" />
           Crear usuario
@@ -231,6 +270,16 @@ export default function StaffPage() {
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="info">{u.role}</Badge>
+                  {/* Dónde trabaja. El dueño maneja todos los locales por
+                      definición; para el resto, "Todas las sucursales" es un
+                      aviso, no un dato: significa que ve la facturación y la
+                      caja de locales donde no trabaja. */}
+                  {u.role !== 'OWNER' &&
+                    (u.branchId ? (
+                      <Badge tone="neutral">{nombreSucursal(u.branchId) ?? 'Sucursal'}</Badge>
+                    ) : (
+                      <Badge tone="warn">Todas las sucursales</Badge>
+                    ))}
                   <Badge tone={u.active ? 'ok' : 'error'} dot>
                     {u.active ? 'Activo' : 'Inactivo'}
                   </Badge>
@@ -309,6 +358,19 @@ export default function StaffPage() {
                     ) : (
                       <span className="input flex w-full items-center text-muted-foreground sm:w-36">{u.role}</span>
                     )}
+                    <select
+                      value={editBranchId}
+                      onChange={(e) => setEditBranchId(e.target.value)}
+                      className="input w-full sm:w-44"
+                      aria-label="Sucursal donde trabaja"
+                    >
+                      <option value="">Todas las sucursales</option>
+                      {sucursales.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
