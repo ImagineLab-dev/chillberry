@@ -33,9 +33,36 @@ traefik  ─── /etc/easypanel/traefik/config/chillberry.yaml
 stack `chillberry` (Docker Swarm)
    ├── web       red: easypanel            alias chillberry-web
    ├── api       redes: easypanel + interna, alias chillberry-api, volumen uploads
+   ├── osrm      red: interna (aislada)     motor de ruteo, datos en /opt/osrm/data
    ├── postgres  red: interna (aislada)     volumen postgres-data
    └── redis     red: interna (aislada)     volumen redis-data
 ```
+
+## Ruteo de entregas (OSRM propio)
+
+El seguimiento dibuja el camino real por las calles. El motor es **una
+instancia propia**, no un servicio de terceros: sin API key, sin cuota y sin
+límite de consultas.
+
+> No lo apuntes al demo público `router.project-osrm.org`. Responde bien, así que
+> es tentador, pero su política lo restringe a desarrollo: en producción
+> terminan bloqueándote, y ese día tus clientes dejan de ver a su repartidor.
+
+Los datos ya procesados viven en `/opt/osrm/data` (~613 MB) y se montan de sólo
+lectura. **Para actualizar el mapa** (calles nuevas, cada varios meses):
+
+```bash
+cd /opt/osrm/data
+curl -O https://download.geofabrik.de/south-america/paraguay-latest.osm.pbf
+/opt/osrm/procesar.sh          # extract + partition + customize, ~2 min
+docker service update --force chillberry_osrm
+```
+
+La ruta se **cachea por entrega** y se recalcula sólo por antigüedad (3 min) o
+desvío real (300 m). Sin eso, con un ping de posición cada 20 segundos, una
+entrega de media hora serían ~90 consultas — irrelevante con motor propio, pero
+es lo que hace que el sistema también funcione contra un servicio con cuota si
+algún día se cambia (`ROUTING_PROVIDER=ors`).
 
 Archivos que definen todo esto, versionados en el repo:
 
