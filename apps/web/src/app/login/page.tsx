@@ -1,5 +1,6 @@
 'use client';
 
+import { PasswordInput } from '@/components/password-input';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -71,19 +72,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="label" htmlFor="password">
-              Contraseña
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input w-full"
-            />
-          </div>
+          <PasswordInput label="Contraseña" value={password} onChange={setPassword} />
 
           <div className="flex justify-center">
             <Turnstile onVerify={setTurnstileToken} />

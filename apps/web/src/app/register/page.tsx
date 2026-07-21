@@ -8,6 +8,7 @@ import type { ApiError } from '@/lib/api-client';
 import { DLOCAL_COUNTRIES, findDlocalCountry } from '@chillberry/domain';
 import { BerryIcon } from '@/components/berry-icon';
 import { Turnstile } from '@/components/turnstile';
+import { PasswordInput } from '@/components/password-input';
 import { Alert, Badge } from '@/components/ui';
 import { CodeInput } from '@/components/code-input';
 
@@ -39,6 +40,7 @@ export default function RegisterPage() {
   const [ownerName, setOwnerName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -58,9 +60,19 @@ export default function RegisterPage() {
     ? (CURRENCY_NAMES[selectedCountry.currency] ?? selectedCountry.currency)
     : '';
 
+  /** Se calcula al vuelo: el aviso aparece mientras escribe, no recién al enviar. */
+  const passwordsNoCoinciden = password2.length > 0 && password !== password2;
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    // Se corta acá y no en el servidor: la confirmación es para atajar un error
+    // de tipeo del usuario, no una regla del sistema. Al backend le llega una
+    // sola contraseña.
+    if (password !== password2) {
+      setError('Las contraseñas no coinciden. Revisalas y probá de nuevo.');
+      return;
+    }
     setLoading(true);
     try {
       await requestSignup({ tenantName, ownerName, email, password, countryCode, turnstileToken });
@@ -202,13 +214,31 @@ export default function RegisterPage() {
 
           <Field label="Tu nombre" value={ownerName} onChange={setOwnerName} />
           <Field label="Email" type="email" value={email} onChange={setEmail} />
-          <Field label="Contraseña" type="password" value={password} onChange={setPassword} minLength={8} />
+          <PasswordInput
+            label="Contraseña"
+            value={password}
+            onChange={setPassword}
+            minLength={8}
+            autoComplete="new-password"
+          />
+          <PasswordInput
+            label="Repetí la contraseña"
+            value={password2}
+            onChange={setPassword2}
+            minLength={8}
+            autoComplete="new-password"
+            error={passwordsNoCoinciden ? 'No coincide con la de arriba' : null}
+          />
 
           <div className="flex justify-center">
             <Turnstile onVerify={setTurnstileToken} />
           </div>
 
-          <button type="submit" disabled={loading || !turnstileToken} className="btn btn-primary btn-lg w-full">
+          <button
+            type="submit"
+            disabled={loading || !turnstileToken || passwordsNoCoinciden || !password2}
+            className="btn btn-primary btn-lg w-full"
+          >
             {loading ? 'Enviando código...' : 'Continuar'}
           </button>
         </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { PasswordInput } from '@/components/password-input';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -133,24 +134,13 @@ export default function RecuperarPage() {
             </p>
 
             <CodeInput value={codigo} onChange={setCodigo} disabled={loading} />
-
-            <div className="space-y-1.5">
-              <label className="label" htmlFor="password">
-                Contraseña nueva
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="new-password"
-                className="input w-full"
-              />
-              <p className="text-xs text-muted-foreground">
-                Mínimo 8 caracteres, con mayúscula, minúscula y número.
-              </p>
-            </div>
+            <PasswordInput
+              label="Contraseña nueva"
+              value={password}
+              onChange={setPassword}
+              minLength={8}
+              autoComplete="new-password"
+            />
 
             <button
               type="submit"
