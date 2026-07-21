@@ -22,7 +22,8 @@ const PREFIJO = 'chillberry:pedido:';
 const VIGENCIA_HORAS = 6;
 
 export interface PedidoEnCurso {
-  deliveryId: string;
+  /** El `trackingToken`, que es lo que abre el seguimiento — no el id. */
+  token: string;
   /** ISO. Para descartarlo cuando ya pasó demasiado tiempo. */
   creado: string;
 }
@@ -31,10 +32,10 @@ function clave(slug: string) {
   return `${PREFIJO}${slug}`;
 }
 
-export function guardarPedidoEnCurso(slug: string, deliveryId: string): void {
+export function guardarPedidoEnCurso(slug: string, token: string): void {
   if (typeof window === 'undefined') return;
   try {
-    const dato: PedidoEnCurso = { deliveryId, creado: new Date().toISOString() };
+    const dato: PedidoEnCurso = { token, creado: new Date().toISOString() };
     window.localStorage.setItem(clave(slug), JSON.stringify(dato));
   } catch {
     // Modo incógnito o almacenamiento lleno: no es motivo para romper el
@@ -49,7 +50,7 @@ export function leerPedidoEnCurso(slug: string): PedidoEnCurso | null {
     if (!crudo) return null;
 
     const dato = JSON.parse(crudo) as PedidoEnCurso;
-    if (!dato?.deliveryId || !dato?.creado) return null;
+    if (!dato?.token || !dato?.creado) return null;
 
     const horas = (Date.now() - new Date(dato.creado).getTime()) / 3_600_000;
     if (!Number.isFinite(horas) || horas > VIGENCIA_HORAS) {

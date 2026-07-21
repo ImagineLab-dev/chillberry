@@ -83,11 +83,18 @@ export class DeliveryGateway implements OnGatewayConnection {
   /** Cualquiera (autenticado o no) puede seguir un delivery puntual por id
    * — es el mismo modelo de seguridad que un link de tracking compartible. */
   @SubscribeMessage('delivery:track')
-  async onTrack(@ConnectedSocket() client: Socket, @MessageBody() body: { deliveryId?: string }) {
-    if (!body?.deliveryId) return;
-    const delivery = await this.prisma.delivery.findUnique({ where: { id: body.deliveryId } });
+  async onTrack(@ConnectedSocket() client: Socket, @MessageBody() body: { trackingToken?: string }) {
+    // Por token y no por id, igual que el endpoint HTTP: con el id, el
+    // repartidor podía escuchar el canal del cliente. La room sigue nombrada
+    // por id (es lo que conoce el emisor), pero para ENTRAR hay que traer el
+    // token — que sólo tiene quien hizo el pedido.
+    if (typeof body?.trackingToken !== 'string' || !body.trackingToken) return;
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { trackingToken: body.trackingToken },
+      select: { id: true },
+    });
     if (!delivery) return;
-    await client.join(this.trackingRoom(body.deliveryId));
+    await client.join(this.trackingRoom(delivery.id));
   }
 
   driverRoom(driverId: string): string {

@@ -78,8 +78,11 @@ const TONE_CLASS: Record<Tone, string> = {
   primary: 'bg-primary/15 text-primary',
 };
 
-export default function TrackPage({ params }: { params: Promise<{ deliveryId: string }> }) {
-  const { deliveryId } = use(params);
+export default function TrackPage({ params }: { params: Promise<{ token: string }> }) {
+  // El parámetro es el `trackingToken`, no el id del delivery. El id lo conocen
+  // el staff y el repartidor: con él, el repartidor podía calificarse 5/5 a sí
+  // mismo antes que el cliente.
+  const { token } = use(params);
   const [tracking, setTracking] = useState<Tracking | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Calificación del repartidor (aparece al entregarse).
@@ -93,7 +96,7 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
     if (rating < 1) return;
     setRatingBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/track/${deliveryId}/rate`, {
+      const res = await fetch(`${API_BASE}/track/${token}/rate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating, comment: ratingComment.trim() || undefined }),
@@ -109,7 +112,7 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
 
   async function load() {
     try {
-      const res = await fetch(`${API_BASE}/track/${deliveryId}`);
+      const res = await fetch(`${API_BASE}/track/${token}`);
       if (!res.ok) throw new Error('No se encontró el pedido');
       setTracking(await res.json());
     } catch (err) {
@@ -121,7 +124,7 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
     load().catch(() => {});
 
     const socket = io(`${SOCKET_URL}/delivery`, { transports: ['websocket'] });
-    socket.on('connect', () => socket.emit('delivery:track', { deliveryId }));
+    socket.on('connect', () => socket.emit('delivery:track', { trackingToken: token }));
     socket.on('delivery:updated', () => load());
     socket.on('driver:location', (payload: { lat: number; lng: number }) => {
       setTracking((prev) => (prev ? { ...prev, location: payload } : prev));
@@ -131,7 +134,7 @@ export default function TrackPage({ params }: { params: Promise<{ deliveryId: st
       socket.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliveryId]);
+  }, [token]);
 
   const StatusIcon = tracking ? (STATUS_ICON[tracking.status] ?? Package) : Package;
   const tone: Tone = tracking ? (STATUS_TONE[tracking.status] ?? 'neutral') : 'neutral';

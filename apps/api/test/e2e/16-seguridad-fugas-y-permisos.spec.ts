@@ -273,3 +273,61 @@ async function crearDeliveryAsignadoA(
   });
   return deliveryId;
 }
+
+test.describe('seguridad: el repartidor no puede calificarse a sí mismo', () => {
+  /**
+   * El link de seguimiento usaba el ID del delivery — la misma clave que el
+   * repartidor ve en sus propias entregas. Como además es él quien dispara el
+   * "entregado", podía ponerse 5/5 antes que el cliente: se subía el promedio
+   * con el que el sistema le reparte más pedidos, y dejaba al cliente sin poder
+   * calificar (es una sola vez por entrega).
+   *
+   * Ahora el link lleva un `trackingToken` aparte, que sólo tiene quien hizo el
+   * pedido. Estos tests fijan las dos mitades: el token no se le filtra al
+   * repartidor, y el id ya no sirve para calificar.
+   */
+  let ownerToken: string;
+  let driverToken: string;
+  let deliveryId: string;
+  let trackingToken: string;
+
+  test.beforeAll(async ({ playwright }) => {
+    const request = await playwright.request.newContext({
+      baseURL: process.env.E2E_API_BASE_URL ?? 'http://localhost:3001/api/',
+    });
+    ownerToken = await login(request, OWNER_CREDENTIALS);
+
+    const activos = await request.get('delivery?status=DELIVERED', { headers: authHeader(ownerToken) });
+    const lista = (await activos.json()) as Array<{ id: string; trackingToken?: string }>;
+    if (lista.length > 0) {
+      deliveryId = lista[0]!.id;
+      trackingToken = lista[0]!.trackingToken ?? '';
+    }
+    await request.dispose();
+  });
+
+  test('el id del delivery YA NO sirve para calificar', async ({ request }) => {
+    test.skip(!deliveryId, 'no hay entregas completadas en el tenant demo');
+    const res = await request.post(`track/${deliveryId}/rate`, { data: { rating: 5 } });
+    expect(
+      res.status(),
+      'calificar con el id tiene que fallar: es la clave que conoce el repartidor',
+    ).toBe(404);
+  });
+
+  test('ninguna ruta del repartidor devuelve el trackingToken', async ({ request }) => {
+    const rutas = ['delivery/orders/available', 'delivery/orders/history'];
+    for (const ruta of rutas) {
+      const res = await request.get(ruta, { headers: authHeader(driverToken ?? ownerToken) });
+      if (!res.ok()) continue;
+      const cuerpo = await res.text();
+      expect(cuerpo, `${ruta} filtró el trackingToken al repartidor`).not.toContain('trackingToken');
+    }
+  });
+
+  test('el token sí abre el seguimiento del cliente', async ({ request }) => {
+    test.skip(!trackingToken, 'sin token para probar');
+    const res = await request.get(`track/${trackingToken}`);
+    expect(res.ok(), 'el cliente tiene que poder seguir su pedido con el token').toBeTruthy();
+  });
+});

@@ -169,7 +169,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   const [menu, setMenu] = useState<BranchMenu | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Pedido con envío que este navegador dejó a medias, para poder volver a seguirlo. */
-  const [pedidoEnCurso, setPedidoEnCurso] = useState<{ deliveryId: string; estado: string } | null>(null);
+  const [pedidoEnCurso, setPedidoEnCurso] = useState<{ token: string; estado: string } | null>(null);
 
   // ¿Este navegador dejó un pedido a medias? Se pregunta el estado real antes
   // de mostrar nada: si ya se entregó o se canceló, se olvida en silencio en vez
@@ -180,12 +180,12 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
     let cancelado = false;
     api
-      .get<{ status: string }>(`/track/${guardado.deliveryId}`, { publicEndpoint: true })
+      .get<{ status: string }>(`/track/${guardado.token}`, { publicEndpoint: true })
       .then((t) => {
         if (cancelado) return;
         const terminado = t.status === 'DELIVERED' || t.status.includes('CANCELLED') || t.status === 'FAILED';
         if (terminado) olvidarPedidoEnCurso(slug);
-        else setPedidoEnCurso({ deliveryId: guardado.deliveryId, estado: t.status });
+        else setPedidoEnCurso({ token: guardado.token, estado: t.status });
       })
       .catch(() => {
         // El delivery ya no existe (purgado, id inválido): se descarta.
@@ -414,6 +414,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
       const res = await api.post<{
         orderId: string;
         deliveryId?: string;
+        trackingToken?: string;
         fulfillment: Fulfillment;
         status: string;
         total: string;
@@ -440,12 +441,12 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
       );
 
       // Delivery: el seguimiento vive en /track (mapa + repartidor por socket).
-      if (res.fulfillment === 'DELIVERY' && res.deliveryId) {
-        // Se recuerda ANTES de redirigir: `/track/<uuid>` es un id aleatorio y
-        // si el cliente cierra la pestaña no tiene forma de volver. El link de
-        // la carta sí lo tiene a mano, así que desde acá lo puede recuperar.
-        guardarPedidoEnCurso(slug, res.deliveryId);
-        router.push(`/track/${res.deliveryId}`);
+      if (res.fulfillment === 'DELIVERY' && res.trackingToken) {
+        // Se recuerda ANTES de redirigir: el token del seguimiento es
+        // aleatorio y si el cliente cierra la pestaña no tiene forma de volver.
+        // El link de la carta sí lo tiene a mano, así que desde acá lo recupera.
+        guardarPedidoEnCurso(slug, res.trackingToken);
+        router.push(`/track/${res.trackingToken}`);
         return;
       }
 
@@ -622,13 +623,13 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Oswald:wght@400;600&family=Nunito:wght@400;600;700&display=swap"
       />
-      {/* Volver al seguimiento. Es la razón de ser de esto: `/track/<uuid>` no
-          se puede adivinar, y si el cliente cerró esa pestaña el link de la
-          carta es lo único que le queda. Va arriba de todo y pegado, para que
-          lo encuentre sin buscar. */}
+      {/* Volver al seguimiento. Es la razón de ser de esto: el token no se
+          puede adivinar, y si el cliente cerró esa pestaña el link de la carta
+          es lo único que le queda. Va arriba de todo y pegado, para que lo
+          encuentre sin buscar. */}
       {pedidoEnCurso && (
         <a
-          href={`/track/${pedidoEnCurso.deliveryId}`}
+          href={`/track/${pedidoEnCurso.token}`}
           className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-primary px-4 py-3 text-primary-foreground"
         >
           <span className="flex items-center gap-2 text-sm font-semibold">

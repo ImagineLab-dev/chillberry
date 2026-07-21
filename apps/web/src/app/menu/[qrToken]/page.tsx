@@ -387,7 +387,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
   }
 
   // Vista de confirmación/seguimiento — reemplaza el menú una vez que el
-  // pedido se envió, con el mismo criterio que /track/[deliveryId]: estado
+  // pedido se envió, con el mismo criterio que /track/[token]: estado
   // en texto simple + polling, no hace falta socket para esto.
   if (placedOrder) {
     return (

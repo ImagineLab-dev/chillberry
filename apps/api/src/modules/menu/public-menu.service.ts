@@ -414,7 +414,7 @@ export class PublicMenuService {
    * delivery o retiro y paga al recibir — no hay pasarela. Mismo camino a
    * cocina; si es delivery, además crea el Delivery y dispara la auto-asignación
    * real (reusa `DeliveryService`), así el pedido entra al flujo de repartidores
-   * existente y el cliente lo sigue en `/track/:deliveryId`.
+   * existente y el cliente lo sigue en `/track/:trackingToken`.
    */
   async createPublicOrder(slug: string, dto: CreatePublicOrderDto, remoteIp?: string | null) {
     await this.turnstile.verify(dto.turnstileToken, remoteIp);
@@ -567,10 +567,14 @@ export class PublicMenuService {
         lat: dto.lat,
         lng: dto.lng,
       });
-      // El front usa `deliveryId` para mandar al cliente a `/track/:deliveryId`.
+      // Va el TOKEN, no el id: el link del cliente no puede ser la misma clave
+      // que ven el staff y el repartidor (con ella, el repartidor se calificaba
+      // solo). `deliveryId` se mantiene porque el front lo usa para nada más
+      // que mostrar; el que abre el seguimiento es `trackingToken`.
       return {
         orderId: order.id,
         deliveryId: delivery.id,
+        trackingToken: delivery.trackingToken,
         fulfillment: dto.fulfillment,
         status: order.status,
         total: order.total,

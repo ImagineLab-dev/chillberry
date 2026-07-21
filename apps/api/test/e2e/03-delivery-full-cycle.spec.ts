@@ -16,6 +16,7 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
   let zoneId: string;
   let deliveryId: string;
   let confirmationCode: string;
+  let trackingToken: string;
 
   let driverUserId: string | undefined;
 
@@ -111,6 +112,9 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
     const delivery = await deliveryRes.json();
     deliveryId = delivery.id;
     confirmationCode = delivery.confirmationCode;
+    // El seguimiento del cliente va por token, no por el id del delivery.
+    trackingToken = delivery.trackingToken;
+    expect(trackingToken).toMatch(/^[a-f0-9]{32}$/);
     expect(confirmationCode).toMatch(/^\d{4}$/);
 
     // El auto-assign puede haber elegido CUALQUIER repartidor ONLINE del
@@ -133,7 +137,7 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
     expect(acceptRes.ok()).toBeTruthy();
     expect((await acceptRes.json()).status).toBe('ACCEPTED');
 
-    const trackingDuringAccepted = await request.get(`track/${deliveryId}`);
+    const trackingDuringAccepted = await request.get(`track/${trackingToken}`);
     expect(trackingDuringAccepted.ok()).toBeTruthy();
     const trackedAccepted = await trackingDuringAccepted.json();
     expect(trackedAccepted.status).toBe('ACCEPTED');
@@ -161,7 +165,7 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
     expect(deliverRes.ok()).toBeTruthy();
     expect((await deliverRes.json()).status).toBe('DELIVERED');
 
-    const trackingRes = await request.get(`track/${deliveryId}`);
+    const trackingRes = await request.get(`track/${trackingToken}`);
     expect(trackingRes.ok()).toBeTruthy();
     const tracked = await trackingRes.json();
     expect(tracked.status).toBe('DELIVERED');

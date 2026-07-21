@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   canTransitionDelivery,
@@ -25,11 +26,22 @@ import { ReportIncidentDto } from './dto/report-incident.dto';
 const ACTIVE_DELIVERY_STATUSES = ['DRIVER_ASSIGNED', 'ACCEPTED', 'PICKED_UP'] as const;
 const HISTORY_STATUSES = ['DELIVERED', 'DRIVER_CANCELLED', 'CUSTOMER_CANCELLED', 'RESTAURANT_CANCELLED', 'FAILED'] as const;
 
+/**
+ * Token del link de seguimiento del cliente. 16 bytes de `randomBytes` (no
+ * `Math.random`, que es predecible): con menos entropía alguien podría barrer
+ * el espacio y espiar entregas ajenas o calificar por el cliente.
+ */
+function nuevoTrackingToken(): string {
+  return randomBytes(16).toString('hex');
+}
+
 /** Piso para el estimado cuando el local no tiene ninguna zona de envío cargada. */
 const DEFAULT_DELIVERY_MINUTES = 45;
 
 /**
- * El `confirmationCode` es un secreto DEL CLIENTE: se lo dicta al repartidor al
+ * Saca de la respuesta los dos secretos del CLIENTE.
+ *
+ * El `confirmationCode` se lo dicta al repartidor al
  * recibir el pedido y el server lo compara en `deliver()`. Si viaja en una
  * respuesta que el repartidor puede leer, el mecanismo queda anulado — puede
  * marcar entregas sin haber pasado nunca por la casa del cliente.
@@ -37,10 +49,16 @@ const DEFAULT_DELIVERY_MINUTES = 45;
  * Que la UI no lo pinte NO alcanza: está en el JSON, a un F12 de distancia. Por
  * eso toda respuesta de un endpoint que lea un repartidor pasa por acá.
  */
-export function stripConfirmationCode<T extends object>(delivery: T): Omit<T, 'confirmationCode'> {
+export function stripConfirmationCode<T extends object>(
+  delivery: T,
+): Omit<T, 'confirmationCode' | 'trackingToken'> {
   const safe = { ...delivery } as Record<string, unknown>;
   delete safe.confirmationCode;
-  return safe as Omit<T, 'confirmationCode'>;
+  // `trackingToken` es el otro secreto del cliente: con él se accede al link de
+  // seguimiento, y desde ahí se califica al repartidor. Si viaja en una
+  // respuesta que el repartidor puede leer, vuelve a poder calificarse solo.
+  delete safe.trackingToken;
+  return safe as Omit<T, 'confirmationCode' | 'trackingToken'>;
 }
 
 @Injectable()
@@ -100,6 +118,7 @@ export class DeliveryService {
         deliveryFee: fee,
         estimatedMinutes: zone.estimatedMinutes,
         confirmationCode,
+        trackingToken: nuevoTrackingToken(),
       },
     });
 
@@ -187,6 +206,7 @@ export class DeliveryService {
         deliveryFee: params.fee,
         estimatedMinutes: await this.estimatedMinutesForBranch(order?.branchId),
         confirmationCode,
+        trackingToken: nuevoTrackingToken(),
       },
     });
     await this.logEvent(delivery.id, 'DELIVERY_CREATED', { fee: params.fee, source: 'public_link' });
@@ -526,9 +546,11 @@ export class DeliveryService {
    * crudo. Nunca expone teléfono del repartidor, y solo expone ubicación si
    * el estado es rastreable Y el repartidor sigue ONLINE.
    */
-  async getPublicTracking(deliveryId: string) {
+  async getPublicTracking(trackingToken: string) {
+    // Por TOKEN, no por id. El id lo conocen el staff y el repartidor; el token
+    // sólo quien hizo el pedido.
     const delivery = await this.prisma.delivery.findUnique({
-      where: { id: deliveryId },
+      where: { trackingToken },
       include: { driver: { include: { user: { select: { name: true } } } } },
     });
     if (!delivery) throw new NotFoundException('Delivery no encontrado');
@@ -641,8 +663,10 @@ export class DeliveryService {
    * completada y una única vez. Recalcula el `ratingAvg` del repartidor como
    * promedio de todas sus entregas calificadas.
    */
-  async ratePublicDelivery(deliveryId: string, rating: number, comment?: string) {
-    const delivery = await this.prisma.delivery.findUnique({ where: { id: deliveryId } });
+  async ratePublicDelivery(trackingToken: string, rating: number, comment?: string) {
+    // La calificación es el motivo por el que el token existe: con el id, el
+    // propio repartidor podía ponerse 5/5 antes que el cliente.
+    const delivery = await this.prisma.delivery.findUnique({ where: { trackingToken } });
     if (!delivery) throw new NotFoundException('Delivery no encontrado');
     if (delivery.status !== 'DELIVERED') {
       throw new BadRequestException('Sólo se puede calificar una entrega ya completada');
@@ -652,7 +676,7 @@ export class DeliveryService {
     }
 
     await this.prisma.delivery.update({
-      where: { id: deliveryId },
+      where: { id: delivery.id },
       data: { rating, ratingComment: comment?.trim() || null },
     });
 

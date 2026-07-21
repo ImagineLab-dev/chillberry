@@ -1297,6 +1297,16 @@ model Delivery {
   deliveryFee       Decimal        @map("delivery_fee") @db.Decimal(10, 2)
   estimatedMinutes  Int?           @map("estimated_minutes")
   confirmationCode  String         @map("confirmation_code") @db.VarChar(6)
+  /// Secreto del CLIENTE: es lo que va en su link de seguimiento.
+  ///
+  /// No se usa el `id` para eso. El repartidor conoce el id de sus entregas y
+  /// es quien dispara el "entregado", así que con el id podía calificarse 5/5 a
+  /// sí mismo antes que el cliente — subiéndose el promedio con el que el
+  /// sistema reparte pedidos y dejando al cliente sin poder calificar.
+  ///
+  /// Nunca debe viajar en una respuesta que lea un repartidor (ver
+  /// `stripDriverSecrets`).
+  trackingToken     String         @unique @map("tracking_token")
   proofPhotoUrl     String?        @map("proof_photo_url")
   proofSignatureUrl String?        @map("proof_signature_url")
   /// Calificación del cliente al repartidor (1-5) + comentario, desde el link
