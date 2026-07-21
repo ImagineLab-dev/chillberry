@@ -192,3 +192,48 @@ test.describe('recuperación de cuenta', () => {
     expect(refresco.status()).toBe(401);
   });
 });
+
+test.describe('alta: un fallo posterior NO puede quemar el código', () => {
+  /**
+   * Lo que pasó en el primer alta real (21/07/2026): la base de producción no
+   * tenía ningún plan cargado. El sistema consumía el código, después buscaba
+   * el plan de entrada, no lo encontraba y tiraba 404. Resultado: código
+   * quemado, cuenta inexistente, y el usuario sin nada que hacer salvo pedir
+   * otro código y gastar uno de los 5 por hora.
+   *
+   * Ahora todo lo que puede fallar corre ANTES del consumo, y si aun así algo
+   * revienta, el código se restaura. Esto fija que un código válido siga
+   * sirviendo mientras no se haya creado la cuenta.
+   */
+  const stamp = Date.now().toString().slice(-9);
+  const alta = datosDeAlta(stamp);
+
+  test('el mismo código sigue sirviendo tras un intento fallido por email duplicado', async ({ request }) => {
+    // Se pide el alta y se lee el código.
+    const pedido = await request.post('auth/register', { data: alta });
+    expect(pedido.ok(), await pedido.text()).toBeTruthy();
+    const codigo = await leerCodigo(alta.email, 'SIGNUP');
+
+    // Un intento con el email en MAYÚSCULAS y un código incorrecto no debe
+    // consumir nada: sirve para confirmar que el código sigue vivo.
+    const fallido = await request.post('auth/verify-signup', {
+      data: { email: alta.email, code: codigo === '000000' ? '111111' : '000000' },
+    });
+    expect(fallido.ok()).toBeFalsy();
+
+    // El código correcto tiene que seguir funcionando.
+    const ok = await request.post('auth/verify-signup', { data: { email: alta.email, code: codigo } });
+    expect(ok.ok(), `el código válido dejó de servir: ${await ok.text()}`).toBeTruthy();
+  });
+
+  test('la cuenta quedó realmente creada, no sólo el código consumido', async () => {
+    // El síntoma del bug era justamente este: código consumido y CERO cuentas.
+    const user = await prisma.user.findUnique({ where: { email: alta.email.toLowerCase() } });
+    expect(user, 'la cuenta tiene que existir tras verificar').not.toBeNull();
+    expect(user!.role).toBe('OWNER');
+
+    const sub = await prisma.subscription.findFirst({ where: { tenantId: user!.tenantId } });
+    expect(sub, 'el restaurante tiene que arrancar con una suscripción').not.toBeNull();
+    expect(sub!.status).toBe('TRIAL');
+  });
+});

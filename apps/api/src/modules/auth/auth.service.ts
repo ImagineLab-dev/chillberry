@@ -89,6 +89,21 @@ export class AuthService {
     meta: RequestMeta,
   ): Promise<TokenPair> {
     const email = args.email.toLowerCase();
+
+    // TODO LO QUE PUEDE FALLAR VA ANTES DE CONSUMIR EL CÓDIGO.
+    //
+    // Consumir es irreversible: el código queda quemado y no se puede reusar.
+    // Si algo revienta después, el usuario se queda sin código Y sin cuenta,
+    // sin nada que pueda hacer salvo pedir otro y gastar uno de los 5 por hora.
+    //
+    // Pasó de verdad en el primer alta real (21/07/2026): la base de producción
+    // no tenía ningún plan cargado, así que la búsqueda del plan tiraba 404
+    // DESPUÉS del consumo. La cuenta no se creaba y el código ya no servía.
+
+    // Si no hay ningún plan activo configurado, esto falla ANTES de tocar el
+    // código: el usuario puede reintentar el mismo código apenas se arregle.
+    const defaultPlan = await this.billing.getDefaultPlan();
+
     const payload = (await this.verification.consumir({
       email,
       purpose: 'SIGNUP',
@@ -97,8 +112,11 @@ export class AuthService {
 
     if (!payload) throw new ConflictException('No encontramos el alta pendiente. Empezá de nuevo.');
 
-    // Se re-chequea acá: entre el pedido del código y la verificación alguien
-    // pudo haber registrado ese mismo email.
+    // El chequeo de email duplicado va DESPUÉS del consumo a propósito, aunque
+    // queme el código: si la cuenta ya existe, el código ya no sirve para nada
+    // igual. Adelantarlo haría que este endpoint público respondiera distinto
+    // según si el email tiene cuenta o no — un oráculo para averiguar quién
+    // está registrado.
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('Ya existe una cuenta con ese email');
 
@@ -109,41 +127,46 @@ export class AuthService {
     };
     const slug = await this.generateUniqueSlug(args2.tenantName);
     const passwordHash = payload.passwordHash;
-    // Se resuelve ANTES de la transacción: si no hay ningún plan activo
-    // configurado, falla rápido con un error claro en vez de a mitad de una
-    // transacción de creación de tenant.
-    const defaultPlan = await this.billing.getDefaultPlan();
 
     // `findDlocalCountry` no puede fallar acá: `RegisterDto.countryCode` ya
     // está validado contra la misma lista (`@IsIn(COUNTRY_CODES)`), pero el
     // fallback a PYG evita un 500 si algún día ese `@IsIn` se afloja.
     const currency = findDlocalCountry(args2.countryCode)?.currency ?? 'PYG';
 
-    const user = await this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: { name: args2.tenantName, slug, countryCode: args2.countryCode, currency },
+    // Si la creación falla, se devuelve el código a su estado anterior. Sin
+    // esto, cualquier error acá deja al usuario sin código y sin cuenta —
+    // exactamente el agujero que apareció en el primer alta real.
+    let user;
+    try {
+      user = await this.prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: { name: args2.tenantName, slug, countryCode: args2.countryCode, currency },
+        });
+        // Fase 6: toda Tenant nueva arranca con una Subscription TRIAL en el
+        // plan de entrada (el de `sortOrder` más bajo) — ver Fase 10 del plan
+        // original ("POST /auth/register crea Tenant+OWNER+Subscription TRIAL").
+        await tx.subscription.create({
+          data: {
+            tenantId: tenant.id,
+            planId: defaultPlan.id,
+            status: 'TRIAL',
+            trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+          },
+        });
+        return tx.user.create({
+          data: {
+            tenantId: tenant.id,
+            email,
+            passwordHash,
+            name: args2.ownerName,
+            role: USER_ROLE.Owner,
+          },
+        });
       });
-      // Fase 6: toda Tenant nueva arranca con una Subscription TRIAL en el
-      // plan de entrada (el de `sortOrder` más bajo) — ver Fase 10 del plan
-      // original ("POST /auth/register crea Tenant+OWNER+Subscription TRIAL").
-      await tx.subscription.create({
-        data: {
-          tenantId: tenant.id,
-          planId: defaultPlan.id,
-          status: 'TRIAL',
-          trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
-        },
-      });
-      return tx.user.create({
-        data: {
-          tenantId: tenant.id,
-          email,
-          passwordHash,
-          name: args2.ownerName,
-          role: USER_ROLE.Owner,
-        },
-      });
-    });
+    } catch (err) {
+      await this.verification.restaurar(email, 'SIGNUP');
+      throw err;
+    }
 
     return this.issueTokens(user, meta);
   }

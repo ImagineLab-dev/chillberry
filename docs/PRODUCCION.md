@@ -38,6 +38,23 @@ stack `chillberry` (Docker Swarm)
    └── redis     red: interna (aislada)     volumen redis-data
 ```
 
+## Base nueva: los planes hay que sembrarlos
+
+Las migraciones crean la estructura, **no los datos**. Sin al menos un plan
+activo, el alta de cuenta consume el código de verificación, después busca el
+plan de entrada, no lo encuentra y tira 404. El usuario queda con el código
+quemado y sin restaurante.
+
+Pasó en el primer alta real, el 21/07/2026. Es un paso obligatorio en cualquier
+base nueva:
+
+```bash
+docker exec -i $(docker ps -qf name=chillberry_postgres)   psql -U chillberry -d chillberry < apps/api/prisma/seed-plans.sql
+```
+
+Es idempotente. NO uses `prisma/seed.ts`: ese crea además el restaurante de
+demostración con datos de prueba.
+
 ## Ruteo de entregas (OSRM propio)
 
 El seguimiento dibuja el camino real por las calles. El motor es **una

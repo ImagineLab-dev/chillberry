@@ -167,6 +167,37 @@ export class VerificationService {
 
     return registro.payload;
   }
+
+  /**
+   * Devuelve un código consumido a su estado anterior.
+   *
+   * Compensación para cuando el consumo salió bien pero lo que venía después
+   * falló. Consumir es irreversible por diseño, así que sin esto el usuario se
+   * queda sin código Y sin lo que fue a hacer — y lo único que puede hacer es
+   * pedir otro, gastando uno de los 5 por hora.
+   *
+   * Es best-effort a propósito: si esta restauración fallara, tapar el error
+   * original sería peor. Se loguea y se sigue.
+   */
+  async restaurar(email: string, purpose: VerificationPurpose): Promise<void> {
+    try {
+      await this.prisma.verificationCode.updateMany({
+        // Sólo el último consumido de ese email: los vencidos y los agotados
+        // por intentos fallidos no se resucitan.
+        where: {
+          email: email.toLowerCase(),
+          purpose,
+          consumedAt: { not: null },
+          expiresAt: { gt: new Date() },
+          attempts: { lt: MAX_INTENTOS },
+        },
+        data: { consumedAt: null },
+      });
+      logger.warn({ email, purpose }, 'Código restaurado: falló el paso posterior al consumo');
+    } catch (err) {
+      logger.error({ err, email, purpose }, 'No se pudo restaurar el código consumido');
+    }
+  }
 }
 
 /**
