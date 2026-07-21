@@ -20,6 +20,12 @@ module.exports = [
         console: 'readonly',
         Buffer: 'readonly',
         fetch: 'readonly',
+        // Van de la mano de `fetch`: son la única forma de ponerle timeout a
+        // una llamada saliente. Sin declararlos acá, usarlos da "is not
+        // defined" aunque Node los tenga desde la v15.
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        URL: 'readonly',
         __dirname: 'readonly',
         __filename: 'readonly',
         module: 'readonly',
