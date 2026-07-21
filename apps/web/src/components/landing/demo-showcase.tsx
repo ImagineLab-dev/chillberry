@@ -806,12 +806,16 @@ export function DemoShowcase() {
       </p>
 
       <ScreenFrame>
-        {/* `min-w-max` es obligatorio: sin él este wrapper mide 100% del marco y
-            el hijo (que tiene su ancho de escritorio) se derrama FUERA del
-            cuadro en vez de activar el scroll horizontal. `w-full` lo estira
-            cuando el marco es más ancho que el contenido, para que las escenas
-            angostas (cliente, repartidor) sigan centradas en desktop. */}
-        <div key={`${tab}-${step}`} className="demo-enter w-full min-w-max">
+        {/* `w-fit min-w-full`, y NO `min-w-max`.
+            `min-w-max` estira este wrapper hasta el ancho MÁXIMO del contenido
+            —aquel en el que ninguna línea de texto corta—, que es bastante mayor
+            que el ancho de escritorio que declara cada escena. Resultado: barra
+            de scroll y contenido recortado incluso en pantallas grandes.
+            `w-fit` lo limita al ancho real de la escena (o al del marco, lo que
+            sea menor) y `min-w-full` lo estira cuando el marco es más ancho, para
+            que las escenas angostas (cliente, repartidor) sigan centradas. El
+            scroll horizontal queda entonces sólo donde hace falta: en móvil. */}
+        <div key={`${tab}-${step}`} className="demo-enter w-fit min-w-full">
           {scene.render(step)}
         </div>
       </ScreenFrame>
