@@ -1,34 +1,22 @@
 # ============================================================================
-# ⚠️  TEMPLATE — NOT LIVE — WILL FAIL UNTIL CONFIGURED  ⚠️
+# SUPERSEDIDO — no lo uses. Se mantiene sólo como referencia.
 # ============================================================================
 #
-# This workflow is a placeholder for manual deploys. It is intentionally
-# wired up end-to-end (not a stub) so the shape is right once real infra
-# exists, but running it TODAY will fail, on purpose, because:
+# Chillberry se despliega con EASYPANEL, que corre en el VPS y construye las
+# aplicaciones directamente desde este repo. Ver docs/DEPLOY-EASYPANEL.md.
 #
-#   1. No hosting provider/host has been confirmed yet for Chillberry.
-#   2. The secrets it references do NOT exist in this repo's settings:
-#        - secrets.DEPLOY_HOST     (SSH host/IP of the target server)
-#        - secrets.DEPLOY_USER     (SSH user)
-#        - secrets.DEPLOY_SSH_KEY  (private key with access to that user)
-#      Without them, the `appleboy/ssh-action` step below fails immediately
-#      at the SSH connection step.
-#   3. The remote path `/opt/chillberry` is a PLACEHOLDER convention copied
-#      from other Smartia deployments, not a provisioned directory. It
-#      assumes a host that already has `infra/docker-compose.prod.yml`
-#      checked out at that path with a running Docker Compose stack.
-#   4. `infra/docker-compose.prod.yml` itself does not exist yet in this
-#      repo (only `infra/docker-compose.dev.yml` does, as of this writing).
+# Este workflow asume otra cosa: entrar por SSH al servidor y manejar a mano un
+# stack de docker-compose en /opt/chillberry. Eso NO es lo que hay hoy —
+# Easypanel administra los servicios por su cuenta y ocupa los puertos 80/443,
+# así que el nginx del compose ni siquiera podría levantar.
 #
-# Do NOT assume this is live just because the file exists in `.github/workflows/`.
-# Before this can actually run:
-#   - [ ] Pick and provision a real host (VPS, cloud VM, etc.)
-#   - [ ] Create `infra/docker-compose.prod.yml`
-#   - [ ] Add the three secrets above in GitHub repo/environment settings
-#   - [ ] Update DEPLOY_PATH below if `/opt/chillberry` isn't the real path
-#   - [ ] Remove this warning block once verified working end-to-end
+# Además nunca estuvo operativo: depende de tres secretos que no existen en la
+# configuración del repo (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY), así que
+# falla en el primer paso.
 #
-# Until then, treat any run of this workflow as expected-to-fail.
+# Sólo corre por `workflow_dispatch` (a mano), nunca solo. Si algún día salís de
+# Easypanel a un servidor pelado, esto más docs/DEPLOY.md §2.c/2.d son el punto
+# de partida — pero hay que cargar los secretos y verificarlo antes de confiar.
 # ============================================================================
 
 name: Deploy (manual, template)
