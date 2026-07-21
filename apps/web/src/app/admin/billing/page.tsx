@@ -23,7 +23,7 @@ type Subscription = {
   plan: Plan;
   trialEndsAt: string | null;
   renewalDate: string | null;
-  usage: { branches: number; maxBranches: number };
+  usage: { branches: number; maxBranches: number; users: number; maxUsers: number };
 };
 
 type SubscriptionInvoice = {
@@ -93,6 +93,9 @@ export default function BillingPage() {
   }, []);
 
   async function onChoosePlan(plan: Plan) {
+    // Cambiar de plan tiene impacto de facturación (un upgrade manda al cobro).
+    // Se confirma para que no salga de un click accidental en la tarjeta.
+    if (!confirm(`¿Cambiar tu plan a "${plan.name}" (${plan.priceMonthly} USD/mes)?`)) return;
     setError(null);
     setNotice(null);
     setPendingPlanId(plan.id);
@@ -149,6 +152,9 @@ export default function BillingPage() {
         </div>
         <p className="text-sm text-muted-foreground">
           Sucursales: <span className="tabular">{subscription.usage.branches} / {subscription.usage.maxBranches}</span>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Usuarios: <span className="tabular">{subscription.usage.users} / {subscription.usage.maxUsers}</span>
         </p>
         {subscription.trialEndsAt && (
           <p className="text-sm text-muted-foreground">

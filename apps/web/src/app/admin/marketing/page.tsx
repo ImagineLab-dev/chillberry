@@ -100,6 +100,8 @@ export default function MarketingPage() {
 
   async function onSend() {
     if (!openKey || message.trim().length < 3) return;
+    // Un aviso a toda una lista de clientes no se deshace: se confirma antes.
+    if (!confirm('Vas a enviarle este aviso a todos los clientes del segmento que lo activaron. ¿Confirmás?')) return;
     setError(null);
     setNotice(null);
     setSending(true);

@@ -535,6 +535,8 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
                           <img
                             src={item.imageUrl}
                             alt={item.name}
+                            loading="lazy"
+                            decoding="async"
                             className={
                               isGridLayout
                                 ? 'h-32 w-full shrink-0 rounded-lg object-cover'

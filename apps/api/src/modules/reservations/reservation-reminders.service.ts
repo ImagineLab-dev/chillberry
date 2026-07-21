@@ -39,12 +39,21 @@ export class ReservationRemindersService {
     if (due.length === 0) return;
 
     for (const r of due) {
+      // Se RECLAMA antes de enviar, no después. El `updateMany` con
+      // `reminderSent: false` en el where es atómico: si dos instancias del API
+      // corren el cron a la vez (o el mismo se solapa), sólo una gana el claim
+      // (count===1) y manda; la otra ve count===0 y saltea. Antes se enviaba y
+      // después se marcaba, así que con dos réplicas cada recordatorio salía
+      // duplicado. Mismo patrón que el cron de encuestas.
+      const claim = await this.prisma.reservation.updateMany({
+        where: { id: r.id, reminderSent: false },
+        data: { reminderSent: true },
+      });
+      if (claim.count === 0) continue;
+
       await this.notifications
         .notifyReservationReminder(r.tenantId, r.customerPhone, r.customerName, r.reservedFor, r.partySize)
         .catch(() => {});
-      // updateMany (no update): el cliente crudo no exige unique compuesto y el
-      // id ya es único; marca enviado aunque el envío sea best-effort.
-      await this.prisma.reservation.updateMany({ where: { id: r.id }, data: { reminderSent: true } });
     }
     logger.info({ count: due.length }, 'Recordatorios de reserva enviados');
   }

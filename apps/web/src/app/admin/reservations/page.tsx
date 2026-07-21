@@ -223,7 +223,14 @@ function ReservationCard({
               No vino
             </button>
           )}
-          <button type="button" onClick={() => void patch({ status: 'CANCELLED' })} disabled={busy} className="btn btn-danger btn-sm">
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm(`¿Cancelar la reserva de ${r.customerName}?`)) void patch({ status: 'CANCELLED' });
+            }}
+            disabled={busy}
+            className="btn btn-danger btn-sm"
+          >
             <X className="h-4 w-4" />
             Cancelar
           </button>

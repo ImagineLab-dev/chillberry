@@ -294,9 +294,14 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         .flatMap((g) => g.options)
         .filter((o) => line.modifierOptionIds.includes(o.id))
         .reduce((sum, o) => sum + Number(o.priceDelta), 0);
-      return Number(item.price) + delta;
+      // Precio por canal: en delivery manda `deliveryPrice` si el local lo
+      // configuró. Sin esto, la tarjeta mostraba el precio delivery pero el
+      // carrito sumaba el de salón — dos números distintos para lo mismo, y un
+      // tercero en lo que cobraba el server.
+      const base = fulfillment === 'DELIVERY' && item.deliveryPrice ? Number(item.deliveryPrice) : Number(item.price);
+      return base + delta;
     },
-    [itemById],
+    [itemById, fulfillment],
   );
 
   /** Mismo shape que el snapshot que guarda el servidor — para poder mostrar
@@ -780,6 +785,8 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                           <img
                             src={item.imageUrl}
                             alt={item.name}
+                            loading="lazy"
+                            decoding="async"
                             className={
                               isGridLayout
                                 ? 'h-32 w-full shrink-0 rounded-lg object-cover'
@@ -887,6 +894,11 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         <CustomizeSheet
           item={customizing}
           countryCode={menu.countryCode}
+          basePrice={
+            fulfillment === 'DELIVERY' && customizing.deliveryPrice
+              ? Number(customizing.deliveryPrice)
+              : Number(customizing.price)
+          }
           onCancel={() => setCustomizing(null)}
           onConfirm={(optionIds, notes) => {
             addCustomLine(customizing.id, optionIds, notes);
@@ -1196,11 +1208,14 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 function CustomizeSheet({
   item,
   countryCode,
+  basePrice,
   onCancel,
   onConfirm,
 }: {
   item: MenuItemView;
   countryCode: string;
+  /** Precio base ya resuelto por canal (salón vs delivery). */
+  basePrice: number;
   onCancel: () => void;
   onConfirm: (optionIds: string[], notes: string) => void;
 }) {
@@ -1240,7 +1255,7 @@ function CustomizeSheet({
         aria-label={`Opciones de ${item.name}`}
       >
         <h2 className="font-heading text-xl font-semibold text-foreground">{item.name}</h2>
-        <p className="tabular mt-0.5 text-sm text-muted-foreground">{formatMoney(item.price, countryCode)}</p>
+        <p className="tabular mt-0.5 text-sm text-muted-foreground">{formatMoney(basePrice, countryCode)}</p>
 
         <div className="mt-5 space-y-5">
           {item.modifierGroups.map((group) => {
@@ -1309,7 +1324,7 @@ function CustomizeSheet({
         <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
           <span className="text-sm text-muted-foreground">Subtotal</span>
           <span className="tabular font-heading text-lg font-semibold text-foreground">
-            {formatMoney(Number(item.price) + delta, countryCode)}
+            {formatMoney(basePrice + delta, countryCode)}
           </span>
         </div>
 

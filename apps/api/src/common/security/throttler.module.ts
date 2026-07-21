@@ -23,10 +23,12 @@ const options: ThrottlerModuleOptions = {
     { name: 'short', ttl: 60_000, limit: 60 },
     { name: 'medium', ttl: 5 * 60_000, limit: 300 },
   ],
-  // Apagable por entorno: la suite E2E se loguea decenas de veces por minuto
-  // contra la MISMA API y se auto-limitaría (login = 5/min). En prod el flag no
-  // se setea, así que el rate-limit queda activo.
-  skipIf: () => process.env.DISABLE_THROTTLE === 'true',
+  // Apagable por entorno SÓLO fuera de producción: la suite E2E se loguea
+  // decenas de veces por minuto contra la MISMA API y se auto-limitaría
+  // (login = 5/min). El `NODE_ENV !== 'production'` es un cinturón de seguridad:
+  // si el flag quedara seteado por error en el server, NO apaga el rate-limit
+  // real (que es lo único que frena la fuerza bruta contra el login).
+  skipIf: () => process.env.DISABLE_THROTTLE === 'true' && process.env.NODE_ENV !== 'production',
   ...(env.REDIS_URL
     ? { storage: new ThrottlerStorageRedisService(new Redis(env.REDIS_URL, { maxRetriesPerRequest: null })) }
     : {}),

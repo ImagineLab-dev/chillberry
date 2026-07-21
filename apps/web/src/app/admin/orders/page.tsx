@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Ban, FileText, Plus, ReceiptText, Send, Undo2, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
 import { formatMoney } from '@chillberry/domain';
+import { ORDER_STATUS_LABEL } from '@/lib/status-labels';
 import { ItemModifierPicker, modifiersSatisfied, type ModifierGroupView } from '@/components/item-modifier-picker';
 import { Alert, Badge, EmptyState, PageHeader, Skeleton, type Tone } from '@/components/ui';
 
@@ -368,7 +369,7 @@ export default function OrdersPage() {
             <option value="ALL">Todos</option>
             {['WAITING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'].map((s) => (
               <option key={s} value={s}>
-                {s}
+                {ORDER_STATUS_LABEL[s] ?? s}
               </option>
             ))}
           </select>
@@ -526,7 +527,7 @@ export default function OrdersPage() {
                   {o.table ? `Mesa ${o.table.code}` : 'Takeaway'}
                 </span>
                 <Badge tone={STATUS_TONE[o.status] ?? STATUS_TONE_FALLBACK} dot>
-                  {o.status}
+                  {ORDER_STATUS_LABEL[o.status] ?? o.status}
                 </Badge>
                 <span className="text-muted-foreground">
                   Total <span className="tabular font-medium text-foreground">{formatMoney(o.total, countryCode)}</span>

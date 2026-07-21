@@ -247,15 +247,27 @@ export class LoyaltyService {
           reason: `Canje de ${pointsToRedeem} puntos`,
         },
       });
-      await tx.order.update({
-        where: { id: order.id },
+      // CAS + deltas, igual que el descuento del POS. Antes esto escribía los
+      // totales ABSOLUTOS calculados de una lectura hecha fuera de la
+      // transacción: si el cajero aplicaba un descuento en el POS entre esa
+      // lectura y este write, el descuento del POS desaparecía del total pero su
+      // fila Discount + cupón quemado quedaban — total incobrable. La guarda
+      // sobre `discountTotal` corta esa carrera.
+      // El delta REAL aplicado, no `discountAmount` crudo: `applyDiscountToOrder`
+      // pudo capar el monto al subtotal, y usar el crudo sobredescontaría.
+      const deltaDescuento = finalApplied.newDiscountTotal - Number(order.discountTotal);
+      const movido = await tx.order.updateMany({
+        where: { id: order.id, discountTotal: order.discountTotal },
         data: {
-          discountTotal: finalApplied.newDiscountTotal,
-          // Sumar de vuelta el deliveryFee: el helper lo ignora y sin esto el
-          // canje de puntos borraba el envío del total (undercobro).
-          total: finalApplied.newTotal + Number(order.deliveryFee ?? 0),
+          discountTotal: { increment: deltaDescuento },
+          total: { decrement: deltaDescuento },
         },
       });
+      if (movido.count === 0) {
+        throw new ConflictException(
+          'Se aplicó otro descuento a este pedido al mismo tiempo — revisá el total y volvé a intentar.',
+        );
+      }
       await tx.loyaltyTransaction.create({
         data: {
           tenantId: this.tenantPrisma.tenantId,

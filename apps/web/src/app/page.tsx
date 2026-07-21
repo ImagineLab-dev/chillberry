@@ -265,7 +265,7 @@ export default function LandingPage() {
 
           <div className="grid gap-5 md:grid-cols-2">
             <div className="card p-6">
-              <h3 className="mb-4 font-heading text-lg font-semibold text-muted-foreground">Como se trabaja hoy</h3>
+              <h3 className="mb-4 font-heading text-lg font-semibold text-muted-foreground">Cómo se trabaja hoy</h3>
               <ul className="space-y-3">
                 {BEFORE.map((line) => (
                   <li key={line} className="flex items-start gap-2.5 text-sm text-muted-foreground">

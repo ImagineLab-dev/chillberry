@@ -144,13 +144,25 @@ export class MenuService {
       return r;
     };
 
-    const [items, options, branches, zones, loyalty] = await Promise.all([
+    const [items, options, branches, zones, coupons, ingredients, loyalty] = await Promise.all([
       this.tenantPrisma.client.menuItem.findMany({ select: { id: true, price: true, cost: true } }),
       this.tenantPrisma.client.modifierOption.findMany({ select: { id: true, priceDelta: true } }),
       this.tenantPrisma.client.branch.findMany({ select: { id: true, deliveryFee: true } }),
       this.tenantPrisma.client.deliveryZone.findMany({
         select: { id: true, baseFee: true, perKmFee: true, minOrderAmount: true },
       }),
+      // Los cupones también llevan montos en la moneda del tenant. Omitirlos era
+      // peligroso: un cupón fijo de ₲50.000, al pasar a USD sin convertir,
+      // quedaba valiendo USD 50.000 → `computeAmount` lo capa al subtotal → 100%
+      // de descuento en cada canje hasta agotar los usos. OJO: sólo se convierte
+      // el `value` de los FIXED_AMOUNT — en los PERCENTAGE `value` es un % y
+      // convertirlo lo rompería.
+      this.tenantPrisma.client.coupon.findMany({
+        select: { id: true, discountType: true, value: true, minOrderAmount: true },
+      }),
+      // Costo de insumos: sin esto, los márgenes de los reportes quedan en la
+      // moneda vieja mientras el precio de venta ya está convertido.
+      this.tenantPrisma.client.ingredient.findMany({ select: { id: true, costPerUnit: true } }),
       // LoyaltyProgram NO es tenant-scoped por el extension (ver
       // tenant-scoped-models.ts) — filtrar por tenantId explícito.
       this.tenantPrisma.client.loyaltyProgram.findFirst({
@@ -201,6 +213,24 @@ export class MenuService {
             }),
           ]
         : []),
+      ...coupons.map((c) =>
+        this.tenantPrisma.client.coupon.update({
+          where: { id: c.id },
+          data: {
+            // El % no se toca; sólo el monto fijo.
+            ...(c.discountType === 'FIXED_AMOUNT' ? { value: conv(Number(c.value)) } : {}),
+            ...(c.minOrderAmount != null ? { minOrderAmount: conv(Number(c.minOrderAmount)) } : {}),
+          },
+        }),
+      ),
+      ...ingredients.map((ing) =>
+        ing.costPerUnit != null
+          ? this.tenantPrisma.client.ingredient.update({
+              where: { id: ing.id },
+              data: { costPerUnit: conv(Number(ing.costPerUnit)) },
+            })
+          : null,
+      ).filter((op): op is NonNullable<typeof op> => op !== null),
     ];
     await this.tenantPrisma.client.$transaction(ops);
     return {
