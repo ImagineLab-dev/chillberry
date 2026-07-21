@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+# Cualquier variante de entorno queda fuera: `.env.production`, `.env.prod`,
+# `.env.staging`... Antes sólo se ignoraban `.env` y `.env.local`, así que un
+# `.env.production` con los secretos del servidor se habría subido al repo.
+.env.*
+!.env.example
+!.env.*.example
+!.env.*.template
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+.vitest/
+
+# IDE
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker / data volumes (dev)
+infra/data/
+infra/.volumes/
+infra/secrets/
+*.local
+
+# Prisma
+apps/api/prisma/migrations/dev.db
+
+# Backups (nunca commitear)
+backups/
+*.sql.gz
+
+# Generated
+apps/api/src/generated/
+
+# Uploads (almacenamiento local de imágenes — nunca commitear archivos subidos)
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep

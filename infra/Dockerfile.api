@@ -1,0 +1,83 @@
+# Dockerfile.api — multi-stage para @chillberry/api (NestJS 11 + Prisma 6).
+# Build context: raíz del monorepo, ej:
+#   docker build -f infra/Dockerfile.api -t chillberry-api .
+# (docker-compose.prod.yml ya define context/dockerfile correctos)
+
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat openssl
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /app
+
+# --- deps: instala node_modules de todo el workspace a partir de los
+# package.json (capa cacheable independiente del código fuente) ---
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/domain/package.json packages/domain/
+COPY packages/shared-types/package.json packages/shared-types/
+RUN pnpm install --frozen-lockfile
+
+# --- builder: copia el código fuente y compila domain -> shared-types -> api,
+# en ese orden, porque @chillberry/api importa ambos paquetes ya COMPILADOS
+# (su package.json declara "main": "./dist/index.js"), no su fuente TS.
+# turbo.json ya declara "build": { "dependsOn": ["^build"] } para este mismo
+# efecto vía `turbo run build`; acá se hace explícito paso a paso porque solo
+# nos interesa construir la rama de dependencias de @chillberry/api. ---
+FROM base AS builder
+# COPY . . ANTES de traer los node_modules instalados en Linux: así, aunque
+# el .dockerignore de la raíz fallara en excluir algo, los node_modules
+# "buenos" de abajo siempre pisan por última vez a los del checkout local.
+COPY . .
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/packages/domain/node_modules ./packages/domain/node_modules
+COPY --from=deps /app/packages/shared-types/node_modules ./packages/shared-types/node_modules
+RUN pnpm --filter @chillberry/domain build
+RUN pnpm --filter @chillberry/shared-types build
+RUN pnpm --filter @chillberry/api prisma:generate
+RUN pnpm --filter @chillberry/api build
+# `pnpm deploy` (no un `COPY` manual de apps/api/node_modules) porque pnpm
+# instala node_modules como symlinks relativos hacia node_modules/.pnpm en
+# la raíz del workspace — copiar esa carpeta a otra profundidad de directorio
+# (como hace la etapa runner) rompe esos symlinks (quedan apuntando 2-3
+# niveles más arriba de lo real). Confirmado en la práctica: sin esto, el
+# runner fallaba en arrancar con `Cannot find module 'reflect-metadata'`
+# porque el symlink copiado apuntaba fuera del filesystem del container.
+# `pnpm deploy` genera un node_modules autocontenido (sin ese problema) para
+# un solo paquete del workspace, exactamente pensado para este caso de uso.
+# Deliberadamente SIN --prod acá: `pnpm deploy` reinstala @prisma/client
+# desde cero (nueva resolución de node_modules), lo que descarta el cliente
+# ya generado por `prisma:generate` más arriba (ese generate corrió ANTES
+# del deploy, contra el node_modules viejo, no el nuevo) — hay que volver a
+# generarlo DENTRO de /app/deploy, y eso requiere el CLI de `prisma`
+# (devDependency, por eso no se puede usar --prod acá). Sin este paso el
+# runner fallaba con "@prisma/client did not initialize yet": el motor de
+# consultas nativo (.so.node) nunca se generaba para el node_modules que
+# realmente viaja a la imagen final. Confirmado corriendo el container real.
+RUN pnpm --filter @chillberry/api deploy /app/deploy
+COPY apps/api/prisma /app/deploy/prisma
+RUN cd /app/deploy && pnpm exec prisma generate
+
+# --- runner: imagen final, solo lo necesario para correr `node dist/main.js` ---
+FROM base AS runner
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 chillberry
+WORKDIR /app
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/dist ./dist
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/node_modules ./node_modules
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/package.json ./package.json
+# prisma/ incluye schema.prisma + migrations/ (necesarios para que el script
+# de deploy corra `prisma migrate deploy` contra este mismo artefacto) y
+# seed.ts (no se ejecuta en runtime, se deja porque no genera daño y evita
+# tener que mantener un segundo patrón de copia parcial).
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/prisma ./prisma
+
+# Las migraciones (prisma migrate deploy) son responsabilidad del script de
+# deploy que orquesta el release, NO se corren automáticamente acá. Este
+# container únicamente levanta la app ya compilada.
+USER chillberry
+EXPOSE 3001
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3001/api/health/live || exit 1
+CMD ["node", "dist/main.js"]

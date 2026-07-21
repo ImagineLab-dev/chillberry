@@ -1,0 +1,645 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Las fuentes se cargan con `next/font/google` en layout.tsx (self-hosted,
+   preload, size-adjust) — NO con @import, que es render-blocking y produce
+   FOUT. Ese archivo define --font-heading y --font-body. */
+
+@layer base {
+  /* ==========================================================================
+     PALETA — CLAYMORPHISM VIOLETA
+     Violeta saturado de marca sobre fondos lavanda-gris muy claros; tarjetas
+     casi blancas "infladas" con sombras difusas.
+
+     TODOS los pares texto/fondo están MEDIDOS contra WCAG AA (4.5:1), no
+     estimados. Los tintes (`bg-ok/15`) se midieron COMPUESTOS sobre su base
+     real, y sobre la PEOR base de las dos posibles (--background, que es más
+     oscuro que --surface), así que un badge pasa esté sobre la tarjeta o sobre
+     el fondo de la página. Los ratios anotados abajo son ese peor caso.
+
+     Los valores son tripletes HSL sin `hsl()` para que Tailwind los envuelva
+     y habilite el modificador de opacidad (`bg-ok/15`).
+     ========================================================================== */
+
+  :root {
+    --background: 225 29% 92%; /* #E5E8F1 lavanda-gris — el fondo de las referencias */
+    --surface: 240 50% 99%; /* #FBFBFE casi blanco: la tarjeta inflada */
+    --foreground: 250 25% 14%; /* 13.72:1 sobre background */
+    --muted: 228 26% 90%;
+    --muted-foreground: 240 10% 40%; /* 5.32:1 sobre background, 5.04:1 sobre muted */
+
+    /* El borde es CASI INVISIBLE a propósito (1.44:1): en clay la tarjeta se
+       lee por la sombra, no por el contorno. Es decorativo — nunca es lo único
+       que identifica un control. */
+    --border: 230 22% 85%;
+    /* --input SÍ es funcional: es el límite del campo de formulario, así que
+       cumple 3:1 (WCAG 1.4.11) — 3.16:1 sobre background, 3.74:1 sobre surface.
+       Es el único token que consume `.input` como border-color. */
+    --input: 230 20% 56%;
+    /* Sombra tintada de violeta, no gris neutro: es lo que hace que el clay se
+       sienta cálido y no sucio. */
+    --shadow: 250 40% 40%;
+
+    /* ------------------------------------------------------------------
+       VIOLETA DE MARCA — L=53%, y esto NO es negociable hacia arriba.
+       `--primary` tiene DOS roles y tiene que pasar en los dos:
+         1. RELLENO: fondo de `.btn-primary` con texto blanco encima → 7.28:1
+         2. TEXTO: las páginas usan `text-primary` en 12 lugares, y en 4 de
+            ellos el texto violeta va ENCIMA de un tinte violeta
+            (`bg-primary/10` en el nav del admin y del super-admin y en el
+            command palette, `bg-primary/15` en el badge de tracking).
+       Ese segundo rol es el que manda. Medido:
+         L=59% (#6B4DE0) → 3.71:1 sobre primary/15 sobre background. REPRUEBA.
+         L=55% (#5C3CDD) → 4.34:1 sobre primary/15 sobre background. REPRUEBA.
+         L=53% (#5533DB) → 4.72:1. PASA, y el relleno mejora a 7.28:1.
+       Texto violeta sobre tinte violeta es intrínsecamente de bajo contraste:
+       ninguna elección de fondo lo arregla, sólo bajar la L del violeta.
+       Si lo aclarás, se rompen esos 4 callsites y no hay error de build que
+       te avise. Verificá con el script del comentario de abajo.
+       ------------------------------------------------------------------ */
+    --primary: 252 70% 53%; /* #5533DB */
+    --primary-foreground: 0 0% 100%; /* 7.28:1 sobre primary */
+    --ring: 252 70% 53%; /* 5.95:1 sobre background — foco visible */
+
+    /* Estados. `--x` es el color pleno; `--x-foreground` es el TEXTO sobre un
+       tinte `bg-x/15` o `bg-x/10`. En claro el texto va MÁS OSCURO que el tinte.
+       Ojo: la L NO es la misma para todos los tonos. El verde necesita bajar
+       más que el azul para el mismo ratio (canal verde = 0.7152 de la
+       luminancia, azul = 0.0722). Por eso ok=22% y info=28% y no un valor
+       único: con un valor único, la mitad de los tonos reprueba. */
+    --ok: 152 62% 40%;
+    --ok-foreground: 152 75% 22%; /* 5.29:1 sobre bg-ok/15 sobre background */
+    --warn: 38 92% 45%;
+    --warn-foreground: 30 90% 28%; /* 5.18:1 sobre bg-warn/15 sobre background */
+    /* `info` es celeste y ya no violeta: el violeta ahora es la MARCA, y un
+       info violeta se leía como "esto es un botón de marca". */
+    --info: 205 85% 40%;
+    --info-foreground: 205 90% 28%; /* 5.53:1 sobre bg-info/15 sobre background */
+    --error: 350 75% 47%;
+    --error-foreground: 350 78% 32%; /* 5.87:1 sobre bg-error/15 sobre background */
+    --error-contrast: 0 0% 100%; /* 5.26:1 sobre --error pleno (btn-danger) */
+
+    /* Segundo stop del gradiente de marca. Medido en los dos roles:
+       como TEXTO (`.brand-text-gradient`) → 5.03:1 sobre background;
+       como RELLENO (`.brand-gradient` con glifo `text-primary-foreground`
+       adentro, ver menú QR) → 6.16:1. */
+    --brand-gradient-to: 285 70% 45%;
+
+    /* ---- CLAY: sombras ----
+       Van como variables y no como strings estáticos en el config porque cada
+       tema necesita ALPHAS distintos, no sólo un color distinto.
+       El highlight interior de arriba es lo que hace el efecto "inflado". */
+    --clay-highlight: hsl(0 0% 100% / 0.9);
+    --shadow-clay:
+      0 1px 1px hsl(var(--shadow) / 0.04), 0 8px 16px -6px hsl(var(--shadow) / 0.14),
+      0 22px 44px -12px hsl(var(--shadow) / 0.18), inset 0 2px 1px -1px var(--clay-highlight);
+    --shadow-clay-sm:
+      0 1px 1px hsl(var(--shadow) / 0.04), 0 4px 8px -3px hsl(var(--shadow) / 0.11),
+      0 10px 18px -8px hsl(var(--shadow) / 0.13), inset 0 1px 0 0 var(--clay-highlight);
+    --shadow-clay-lift:
+      0 2px 3px hsl(var(--shadow) / 0.05), 0 12px 22px -6px hsl(var(--shadow) / 0.18),
+      0 30px 56px -14px hsl(var(--shadow) / 0.22), inset 0 2px 1px -1px var(--clay-highlight);
+    --shadow-clay-inset:
+      inset 0 2px 4px 0 hsl(var(--shadow) / 0.12), inset 0 1px 1px 0 hsl(var(--shadow) / 0.07);
+    --shadow-clay-primary:
+      0 2px 4px -1px hsl(var(--primary) / 0.35), 0 10px 22px -6px hsl(var(--primary) / 0.5),
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.22);
+  }
+
+  .dark {
+    /* Clay en oscuro: la superficie está APENAS más clara que el fondo (1.10:1)
+       y la separación la hace la sombra negra, no el contraste de relleno.
+       Nada de negro puro — todo tintado de violeta. */
+    --background: 250 16% 9%; /* #15131B */
+    --surface: 250 14% 13%; /* #1E1D26 */
+    --foreground: 250 20% 97%; /* #F6F6F9 — no blanco puro. 17.06:1 */
+    --muted: 250 10% 20%;
+    --muted-foreground: 250 12% 68%; /* 7.57:1 sobre background, 5.49:1 sobre muted */
+    --border: 250 10% 27%; /* decorativo, igual que en claro */
+    --input: 250 10% 46%; /* 3.20:1 sobre surface — límite de campo, funcional */
+    --shadow: 0 0% 0%; /* negro puro: en oscuro la sombra tiene que pegar */
+
+    /* El primary SUBE de luminosidad en oscuro: a L=53% sobre #1E1D26 sería
+       invisible. A L=76% da 6.02:1 como texto sobre surface y 6.72:1 como
+       relleno con el `--primary-foreground` oscuro encima. Y sigue pasando en
+       el caso feo: violeta sobre `bg-primary/15` → 4.72:1. */
+    --primary: 252 90% 76%; /* #A18BF9 */
+    --primary-foreground: 252 60% 12%; /* 6.72:1 sobre primary */
+    --ring: 252 90% 76%; /* 6.64:1 sobre background */
+
+    /* ACÁ ESTÁ EL BUG QUE NO SE PUEDE REVIVIR.
+       El sistema clay viejo OSCURECÍA los `-foreground` en oscuro (L=12-15%) y
+       los usaba como texto sobre tintes oscuros → 1.02:1 a 1.69:1. Los badges
+       del KDS eran texto casi negro sobre fondo casi negro: ilegibles, en la
+       cocina de todos los clientes.
+       La regla: en oscuro el texto va MÁS CLARO que su tinte (L=70-74%), nunca
+       más oscuro. Y otra vez, la L se ajusta POR TONO. */
+    --ok: 152 55% 60%;
+    --ok-foreground: 152 60% 70%; /* 8.79:1 sobre bg-ok/15 sobre background */
+    --warn: 38 92% 60%;
+    --warn-foreground: 38 92% 70%; /* 8.67:1 sobre bg-warn/15 sobre background */
+    --info: 205 80% 60%;
+    --info-foreground: 205 85% 72%; /* 7.59:1 sobre bg-info/15 sobre background */
+    --error: 350 80% 62%;
+    --error-foreground: 350 85% 74%; /* 6.39:1 sobre bg-error/15 sobre background */
+    --error-contrast: 350 80% 10%; /* 5.21:1 sobre --error pleno (btn-danger) */
+
+    /* El gradiente también se aclara: así `.brand-text-gradient` sigue legible
+       sobre el fondo oscuro (7.51:1) y el glifo `--primary-foreground` que va
+       DENTRO de `.brand-gradient` sigue legible sobre el relleno (7.61:1). */
+    --brand-gradient-to: 285 85% 74%;
+
+    /* En oscuro el highlight superior es un susurro (0.07), no un borde blanco:
+       arriba de 0.1 la tarjeta parece que tiene un stroke. Y las sombras negras
+       suben de alpha porque sobre un fondo oscuro una sombra al 0.14 no existe. */
+    --clay-highlight: hsl(250 40% 100% / 0.07);
+    --shadow-clay:
+      0 1px 1px hsl(var(--shadow) / 0.3), 0 8px 16px -6px hsl(var(--shadow) / 0.5),
+      0 22px 44px -12px hsl(var(--shadow) / 0.6), inset 0 2px 1px -1px var(--clay-highlight);
+    --shadow-clay-sm:
+      0 1px 1px hsl(var(--shadow) / 0.3), 0 4px 8px -3px hsl(var(--shadow) / 0.45),
+      0 10px 18px -8px hsl(var(--shadow) / 0.5), inset 0 1px 0 0 var(--clay-highlight);
+    --shadow-clay-lift:
+      0 2px 3px hsl(var(--shadow) / 0.35), 0 12px 22px -6px hsl(var(--shadow) / 0.55),
+      0 30px 56px -14px hsl(var(--shadow) / 0.7), inset 0 2px 1px -1px var(--clay-highlight);
+    --shadow-clay-inset:
+      inset 0 2px 4px 0 hsl(var(--shadow) / 0.45), inset 0 1px 1px 0 hsl(var(--shadow) / 0.3);
+    --shadow-clay-primary:
+      0 2px 4px -1px hsl(var(--primary) / 0.2), 0 10px 22px -6px hsl(var(--primary) / 0.3),
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.15);
+  }
+}
+
+/* ============================================================================
+   CÓMO VERIFICAR UN CAMBIO DE COLOR ACÁ (no estimes, medí):
+
+   node -e '
+   function hexToRgb(h){const n=parseInt(h.slice(1),16);return [(n>>16)&255,(n>>8)&255,n&255];}
+   function lum(c){const [r,g,b]=c.map(v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);});
+     return 0.2126*r+0.7152*g+0.0722*b;}
+   function ratio(a,b){const l1=lum(a),l2=lum(b);const[x,y]=l1>l2?[l1,l2]:[l2,l1];return (x+0.05)/(y+0.05);}
+   function blend(fg,bg,a){return fg.map((c,i)=>a*c+(1-a)*bg[i]);}
+   // Un tinte bg-ok/15 NO es --ok: es --ok compuesto al 15% sobre su base.
+   // Medí el color COMPUESTO, y sobre --background (la peor base), no sobre --surface.
+   console.log(ratio(hexToRgb("#0E623B"), blend(hexToRgb("#27A56A"), hexToRgb("#E5E8F1"), 0.15)));
+   '
+
+   `pnpm build`, `typecheck` y `lint` son CIEGOS a esto: un par ilegible compila
+   perfecto. La única red es medir.
+   ============================================================================ */
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-body), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading), system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* Cifras alineadas en columnas de métricas/precios. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Entrada de las demos de la landing: fade + un desplazamiento corto. Dura
+     260ms (rango de micro-interacción); más lento se siente pesado. Anima sólo
+     `opacity` y `transform`, que van por GPU y no re-maquetan. El bloque de
+     `prefers-reduced-motion` de acá abajo la neutraliza sola. */
+  @keyframes demo-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .demo-enter {
+    animation: demo-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Escalonado de los hijos directos: las columnas del KDS o las tarjetas de
+     métricas entran una atrás de otra en vez de todas de golpe. */
+  .demo-stagger > * {
+    animation: demo-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .demo-stagger > *:nth-child(1) {
+    animation-delay: 60ms;
+  }
+  .demo-stagger > *:nth-child(2) {
+    animation-delay: 100ms;
+  }
+  .demo-stagger > *:nth-child(3) {
+    animation-delay: 140ms;
+  }
+  .demo-stagger > *:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  .demo-stagger > *:nth-child(5) {
+    animation-delay: 220ms;
+  }
+  .demo-stagger > *:nth-child(6) {
+    animation-delay: 260ms;
+  }
+  .demo-stagger > *:nth-child(7) {
+    animation-delay: 300ms;
+  }
+  /* Tope: de acá en adelante entran todos juntos. Encadenar más se siente lento
+     y el visitante ya entendió el gesto. */
+  .demo-stagger > *:nth-child(n + 8) {
+    animation-delay: 340ms;
+  }
+
+  /* Accesibilidad: nadie se marea por nuestras animaciones. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* ==========================================================================
+     SUPERFICIES — DOS ESCALAS DE DENSIDAD
+
+     GENEROSA (`.panel` 24px, `.card` 20px, sombra `clay` amplia e inflada):
+       superficies con pocos elementos, donde el clay tiene aire. Login,
+       register, menú QR, dashboard, tracking, driver. Es el DEFAULT.
+
+     CONTENIDA (`.card-dense` 14px, sombra `clay-sm` más chica y menos difusa):
+       superficies densas. El KDS muestra 40 comandas en 4 columnas y se lee a 2
+       metros: con radio 24 y sombra amplia, el aire se come el contenido y las
+       tarjetas se empastan entre sí. Mismo lenguaje, menos inflado.
+       Es OPT-IN — la página densa escribe `card card-dense`; `.card-dense` va
+       después de `.card` en el archivo, así que gana por orden. También funciona
+       sola, sin `.card`.
+
+     Si agregás una superficie nueva, elegí una de las dos escalas. No inventes
+     una tercera: dos ya obligan a justificar cada pantalla.
+     ========================================================================== */
+
+  .card {
+    border-radius: theme('borderRadius.xl'); /* 20px — generosa */
+    border-width: 1px;
+    border-color: hsl(var(--border)); /* casi invisible: el volumen lo hace la sombra */
+    background-color: hsl(var(--surface));
+    box-shadow: theme('boxShadow.clay');
+  }
+
+  .panel {
+    border-radius: theme('borderRadius.clay'); /* 24px — generosa, contenedor de página */
+    border-width: 1px;
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--surface));
+    box-shadow: theme('boxShadow.clay');
+  }
+
+  /* Escala CONTENIDA. Usar en KDS, POS y tablas del admin: `card card-dense`. */
+  .card-dense {
+    border-radius: theme('borderRadius.clay-sm'); /* 14px */
+    border-width: 1px;
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--surface));
+    box-shadow: theme('boxShadow.clay-sm');
+  }
+
+  /* Card clickeable — el hover infla la sombra y tiñe el borde. El translateY
+     es transform, no margin: no mueve el layout de los vecinos. */
+  .card-interactive {
+    cursor: pointer;
+    transition:
+      border-color 150ms ease,
+      box-shadow 200ms ease,
+      transform 200ms ease;
+  }
+  .card-interactive:hover {
+    border-color: hsl(var(--primary) / 0.45);
+    box-shadow: theme('boxShadow.clay-lift');
+    transform: translateY(-2px);
+  }
+  .card-interactive:active {
+    transform: translateY(0);
+    box-shadow: theme('boxShadow.clay-sm');
+  }
+
+  /* ==========================================================================
+     BOTONES — pill (el clay los quiere redondeados del todo).
+     `.btn-icon` + pill = círculo, así que un FAB es `btn btn-primary btn-icon
+     btn-lg` sin clase nueva.
+     ========================================================================== */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    border-radius: 9999px;
+    border-width: 1px;
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+    padding: 0.5rem 1rem;
+    /* Fuente de body, NO la display: Space Grotesk en cada botón se lee como
+       dos fuentes compitiendo. La display queda para h1-h3 y cifras de stat. */
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    cursor: pointer;
+    box-shadow: theme('boxShadow.clay-sm');
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease,
+      transform 100ms ease,
+      opacity 150ms ease;
+  }
+  .btn:hover:not(:disabled) {
+    background-color: hsl(var(--muted));
+  }
+  /* El sistema anterior no tenía foco visible — hueco de accesibilidad de
+     teclado. `:focus-visible` (no `:focus`) para no molestar al mouse.
+     El ring da 5.95:1 sobre el fondo en claro y 6.64:1 en oscuro. */
+  .btn:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  /* Apretar hunde el botón: baja y pierde sombra. */
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: theme('boxShadow.xs');
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* Violeta pleno con glow del mismo violeta debajo — la firma del clay. */
+  .btn-primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: transparent;
+    box-shadow: theme('boxShadow.clay-primary');
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: hsl(var(--primary) / 0.9);
+  }
+
+  .btn-danger {
+    background-color: hsl(var(--error));
+    color: hsl(var(--error-contrast));
+    border-color: transparent;
+    box-shadow:
+      0 2px 4px -1px hsl(var(--error) / 0.35),
+      0 10px 22px -6px hsl(var(--error) / 0.45);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background-color: hsl(var(--error) / 0.9);
+  }
+
+  /* El ghost es el único sin volumen: es el "no botón". */
+  .btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+    color: hsl(var(--muted-foreground));
+    box-shadow: none;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  .btn-sm {
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .btn-lg {
+    padding: 0.625rem 1.25rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+
+  /* Botón de ícono cuadrado — 36px cumple el mínimo táctil con `btn-lg`. */
+  /* Botón de sólo ícono. El mínimo de 44px NO es decorativo: estos botones
+     viven en las pantallas que se usan con los dedos (cocina, mozo, caja,
+     repartidor), muchas veces en una tablet grasosa o con la moto andando.
+     Con el padding solo quedaban en 34px. */
+  .btn-icon {
+    padding: 0.5rem;
+    aspect-ratio: 1;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  /* ==========================================================================
+     FORMULARIOS — el campo va HUNDIDO (sombra inset), al revés que la tarjeta,
+     que está inflada. Es lo que hace que el clay se lea como material.
+     ========================================================================== */
+
+  /* Sin `width: 100%` forzado (el sistema anterior lo tenía y obligaba al KDS
+     a parchear con `w-auto`). Usar `w-full` donde haga falta. */
+  .input {
+    display: block;
+    border-radius: theme('borderRadius.clay-sm');
+    border-width: 1px;
+    border-color: hsl(var(--input));
+    /* El fondo del campo es --background (lavanda), más oscuro que la tarjeta
+       casi blanca: eso solo ya lo lee como hueco, y la sombra inset lo remata. */
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    padding: 0.5rem 0.75rem;
+    /* 16px en móvil NO es una decisión estética: por debajo de 16px, iOS hace
+       zoom automático al enfocar el input y deja la página descuadrada. Vuelve
+       a 14px recién en pantallas donde no hay teclado táctil. */
+    font-size: 1rem;
+    line-height: 1.5rem;
+    min-height: 44px;
+    box-shadow: theme('boxShadow.clay-inset');
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+  @media (min-width: 640px) {
+    .input {
+      font-size: 0.875rem;
+      line-height: 1.25rem;
+      min-height: 0;
+    }
+  }
+  .input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  .input:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow:
+      theme('boxShadow.clay-inset'),
+      0 0 0 3px hsl(var(--primary) / 0.2);
+  }
+  .input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+  }
+
+  /* ==========================================================================
+     BADGES — con color propio.
+     El sistema anterior dejaba `.clay-badge` sin color, así que cada callsite
+     repetía a mano el par `bg-clay-X/20 text-clay-X-foreground`: el mismo mapa
+     estado→color estaba reescrito en ~10 archivos.
+
+     Cada par texto/tinte de acá abajo está medido sobre --background, que es la
+     peor base posible. Sobre --surface dan aún más. Los ratios están en la
+     paleta, arriba.
+     ========================================================================== */
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    border-width: 1px;
+    border-color: transparent;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1rem;
+    white-space: nowrap;
+  }
+
+  .badge-ok {
+    background-color: hsl(var(--ok) / 0.15);
+    color: hsl(var(--ok-foreground));
+    border-color: hsl(var(--ok) / 0.25);
+  }
+  .badge-warn {
+    background-color: hsl(var(--warn) / 0.15);
+    color: hsl(var(--warn-foreground));
+    border-color: hsl(var(--warn) / 0.25);
+  }
+  .badge-info {
+    background-color: hsl(var(--info) / 0.15);
+    color: hsl(var(--info-foreground));
+    border-color: hsl(var(--info) / 0.25);
+  }
+  .badge-error {
+    background-color: hsl(var(--error) / 0.15);
+    color: hsl(var(--error-foreground));
+    border-color: hsl(var(--error) / 0.25);
+  }
+  .badge-neutral {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border));
+  }
+  /* Violeta sobre tinte violeta: pasa (4.72:1 en el peor caso) sólo porque
+     --primary está a L=53%. Ver la nota en la paleta antes de aclararlo. */
+  .badge-primary {
+    background-color: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.25);
+  }
+
+  /* ==========================================================================
+     ALERTAS — el sistema anterior copiaba esta cadena de clases literal en 12
+     archivos (`clay-card border-clay-rose/40 bg-clay-rose/10 ...`).
+     ========================================================================== */
+
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    border-radius: theme('borderRadius.lg');
+    border-width: 1px;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .alert-error {
+    background-color: hsl(var(--error) / 0.1);
+    border-color: hsl(var(--error) / 0.3);
+    color: hsl(var(--error-foreground));
+  }
+  .alert-warn {
+    background-color: hsl(var(--warn) / 0.1);
+    border-color: hsl(var(--warn) / 0.3);
+    color: hsl(var(--warn-foreground));
+  }
+  .alert-ok {
+    background-color: hsl(var(--ok) / 0.1);
+    border-color: hsl(var(--ok) / 0.3);
+    color: hsl(var(--ok-foreground));
+  }
+  .alert-info {
+    background-color: hsl(var(--info) / 0.1);
+    border-color: hsl(var(--info) / 0.3);
+    color: hsl(var(--info-foreground));
+  }
+
+  /* ==========================================================================
+     VARIOS
+     ========================================================================== */
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: theme('borderRadius.clay-sm');
+    background-color: hsl(var(--muted));
+  }
+  /* Barrido de luz en vez de `animate-pulse`: se lee como "cargando", no como
+     "algo parpadea". */
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.06), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  /* Gradiente de marca — para momentos hero (login, portada del menú QR).
+     Estructural, no decorativo: NO usar de fondo general.
+     Los dos stops se aclaran en oscuro (ver --brand-gradient-to) para que
+     `.brand-text-gradient` siga legible y para que el glifo que va DENTRO de
+     `.brand-gradient` (menú QR usa `text-primary-foreground`) siga legible. */
+  .brand-gradient {
+    background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--brand-gradient-to)));
+  }
+
+  .brand-text-gradient {
+    background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--brand-gradient-to)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}

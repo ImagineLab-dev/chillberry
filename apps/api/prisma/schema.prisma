@@ -1,0 +1,1594 @@
+// ============================================================================
+// Chillberry — Fase 0 (Fundación, asunción — Partes 1-7 no existían en ningún
+// lado y se infirieron a partir de las referencias de las Partes 8, 9 y 10).
+//
+// Principio transversal: TODA tabla operativa lleva `tenantId` como columna
+// directa (denormalizada, seteada por el Prisma Client Extension de
+// tenant-scoping en cada `create`), aunque sea derivable vía joins
+// (branch -> restaurant -> tenant). Esto simplifica el guard/extension de
+// aislamiento y deja la puerta abierta a Postgres RLS como hardening
+// pre-producción (ver Fase 8).
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  WAITER
+  KITCHEN
+  CASHIER
+  DRIVER
+}
+
+model Tenant {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String   @unique
+  /// Subdominio PÚBLICO editable para la carta compartible por marca:
+  /// `<publicSubdomain>.chillberry.io` (ej. hamburgueseria). Distinto del `slug`
+  /// interno (que queda estable): el tenant puede personalizar este sin romper
+  /// identificadores internos. Único global; null = todavía sin subdominio (usa
+  /// los links por sucursal `/r/:branchSlug`).
+  publicSubdomain String?  @unique @map("public_subdomain")
+  countryCode     String   @map("country_code") @db.VarChar(2)
+  /// ISO 4217 — moneda operativa del tenant (menú, pedidos, POS, dashboard).
+  /// Seleccionable entre los países que DLocal soporta en Latam, ver
+  /// `DLOCAL_COUNTRIES` en @chillberry/domain. Independiente de en qué
+  /// moneda esté cotizado el `Plan` de suscripción (ver comentario ahí).
+  currency        String   @default("PYG") @db.VarChar(3)
+  timezone        String   @default("America/Asuncion")
+  /// Color de marca del tenant (hex `#RRGGBB`), aplicado a la carta pública.
+  /// Null = usa el berry de Chillberry. El color del TEXTO sobre este fondo no
+  /// se guarda: se deriva de la luminancia en cada render (`brandTokens` en
+  /// @chillberry/domain), así el tenant no puede elegir una combinación
+  /// ilegible por más que quiera.
+  brandColor      String?  @map("brand_color") @db.VarChar(7)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  users        User[]
+  restaurants  Restaurant[]
+  drivers      Driver[]
+  subscription Subscription?
+
+  @@map("tenants")
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  // Global (no per-tenant): un usuario pertenece a un único tenant y
+  // POST /auth/login recibe solo email+password (sin selector de tenant) —
+  // si fuera único por (tenantId, email) el login quedaría ambiguo entre
+  // dos tenants con el mismo email.
+  email               String    @unique
+  phone               String?
+  passwordHash        String    @map("password_hash")
+  name                String
+  role                UserRole
+  active              Boolean   @default(true)
+  /// Anti-fuerza-bruta por CUENTA (complementa el rate-limit por IP): cuenta los
+  /// logins fallidos consecutivos; al llegar al umbral se bloquea hasta
+  /// `lockedUntil`. Se resetea en cada login exitoso.
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+  driverProfile Driver?
+
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+/// Sesiones de refresh token (rotación en cada uso — ver AuthService.refresh).
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Restaurant {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  logoUrl   String?  @map("logo_url")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches Branch[]
+
+  @@index([tenantId])
+  @@map("restaurants")
+}
+
+model Branch {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  restaurantId          String   @map("restaurant_id") @db.Uuid
+  name                  String
+  address               String
+  lat                   Decimal? @db.Decimal(9, 6)
+  lng                   Decimal? @db.Decimal(9, 6)
+  phone                 String?
+  /// Banner/portada que se muestra arriba del menú público (`/menu/:qrToken`).
+  /// A nivel Branch, no Restaurant: sucursales del mismo restaurante pueden
+  /// tener ambientaciones/fotos distintas.
+  coverImageUrl         String?  @map("cover_image_url")
+  active                Boolean  @default(true)
+  /// Slug para el menú público COMPARTIBLE (Instagram/WhatsApp): la URL
+  /// `/r/:publicSlug`, no atada a una mesa como el QR. Único global para que
+  /// el ruteo sea directo. Null = todavía no publicado.
+  publicSlug            String?  @unique @map("public_slug")
+  /// Interruptor maestro del pedido online: si está apagado, el link muestra
+  /// la carta pero no deja pedir.
+  publicOrderingEnabled Boolean  @default(false) @map("public_ordering_enabled")
+  /// Qué tipos de pedido acepta el link público.
+  acceptsDelivery       Boolean  @default(true) @map("accepts_delivery")
+  acceptsPickup         Boolean  @default(true) @map("accepts_pickup")
+  /// Tarifa de envío plana para el pedido público (MVP: sin geo-matching de
+  /// zonas — el staff puede ajustar después desde el board de delivery).
+  deliveryFee           Decimal  @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  /// Ventana horaria específica de DELIVERY, en minutos desde medianoche (hora
+  /// local del tenant). Corte ADICIONAL al horario general de la sucursal: un
+  /// local puede estar abierto hasta las 23h pero cortar envíos a las 22h.
+  /// null = sin restricción propia de delivery (aplica sólo el horario general).
+  /// Ver `isWithinDeliveryWindow` en @chillberry/domain.
+  deliveryStartMinute   Int?     @map("delivery_start_minute")
+  deliveryEndMinute     Int?     @map("delivery_end_minute")
+  /// Diseño visual de la carta pública de ESTA sucursal (per-branch): colores,
+  /// tipografía, layout (lista/grilla, mostrar fotos/descripciones), estilo de
+  /// portada y logo. JSON flexible; el front lo aplica con defaults seguros.
+  /// Ver `CartaThemeDto`. Null = usa el look por defecto (marca del tenant).
+  cartaTheme            Json?    @map("carta_theme")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  restaurant           Restaurant            @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tables               Table[]
+  menuCategories       MenuCategory[]
+  menuItems            MenuItem[]
+  orders               Order[]
+  kitchenStations      KitchenStation[]
+  cashRegisterSessions CashRegisterSession[]
+  invoices             Invoice[]
+  invoiceCounters      InvoiceCounter[]
+  deliveryZones        DeliveryZone[]
+  reservations         Reservation[]
+  hours                BranchHours[]
+  closures             BranchClosure[]
+  ingredients          Ingredient[]
+  feedbacks            Feedback[]
+  purchaseOrders       PurchaseOrder[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+/// Horario semanal recurrente de la sucursal para el PEDIDO ONLINE (`/r/:slug`).
+/// Varias filas por día = turnos partidos (12:00-15:00 y 20:00-23:30). Los
+/// minutos son desde medianoche en la zona horaria del tenant.
+///
+/// Enforcement OPT-IN: si una sucursal no tiene ninguna fila, se considera
+/// "siempre abierta" y el pedido online no se restringe (no rompe sucursales
+/// existentes). Recién cuando el tenant carga horarios, se empieza a validar.
+/// No cruza medianoche: `closeMinute` debe ser mayor que `openMinute`.
+model BranchHours {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @map("tenant_id") @db.Uuid
+  branchId    String @map("branch_id") @db.Uuid
+  /// 0=domingo .. 6=sábado (convención de JS `Date.getDay`).
+  weekday     Int
+  openMinute  Int    @map("open_minute")
+  closeMinute Int    @map("close_minute")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([branchId, weekday])
+  @@map("branch_hours")
+}
+
+/// Excepción por fecha: un día puntual en que la sucursal NO abre (feriado,
+/// vacaciones), independientemente del horario semanal. Bloquea el pedido
+/// online todo ese día en la zona horaria del tenant.
+model BranchClosure {
+  id       String   @id @default(uuid()) @db.Uuid
+  tenantId String   @map("tenant_id") @db.Uuid
+  branchId String   @map("branch_id") @db.Uuid
+  /// Día cerrado (solo fecha, sin hora).
+  date     DateTime @db.Date
+  reason   String?
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, date])
+  @@index([tenantId])
+  @@map("branch_closures")
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+model Table {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  branchId  String      @map("branch_id") @db.Uuid
+  code      String
+  qrToken   String      @unique @map("qr_token")
+  status    TableStatus @default(AVAILABLE)
+  capacity  Int?
+  // Soft-delete: una mesa retirada se marca inactiva (no se muestra en el mapa
+  // del mesero ni acepta pedidos por su QR). El borrado DURO solo se permite si
+  // nunca tuvo pedidos ni reservas (ver TablesService.remove).
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders       Order[]
+  reservations Reservation[]
+
+  @@unique([branchId, code])
+  @@index([tenantId])
+  @@map("tables")
+}
+
+enum ReservationStatus {
+  PENDING /// pedida, sin confirmar
+  CONFIRMED /// confirmada por el local
+  SEATED /// el cliente llegó y se sentó
+  CANCELLED
+  NO_SHOW /// no vino
+}
+
+/// Reserva de mesa. Reemplaza el cuaderno donde el local anota "familia López,
+/// 8 personas, viernes 21h". La mesa es OPCIONAL: se puede reservar sin
+/// asignar una mesa puntual (se define al llegar) y recién al sentar
+/// (`SEATED`) se marca la mesa OCCUPIED.
+model Reservation {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  branchId      String            @map("branch_id") @db.Uuid
+  tableId       String?           @map("table_id") @db.Uuid
+  customerName  String            @map("customer_name")
+  customerPhone String?           @map("customer_phone")
+  partySize     Int               @map("party_size")
+  reservedFor   DateTime          @map("reserved_for")
+  status        ReservationStatus @default(PENDING)
+  notes         String?
+  /// Si ya se le mandó el recordatorio por WhatsApp (evita duplicados; lo setea
+  /// el cron `ReservationRemindersService`).
+  reminderSent  Boolean           @default(false) @map("reminder_sent")
+  createdById   String?           @map("created_by_id") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table  Table? @relation(fields: [tableId], references: [id])
+
+  @@index([tenantId])
+  @@index([branchId, reservedFor])
+  @@map("reservations")
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  branch Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  items  MenuItem[]
+
+  @@index([tenantId])
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  categoryId    String?  @map("category_id") @db.Uuid
+  stationId     String?  @map("station_id") @db.Uuid
+  name          String
+  description   String?
+  price         Decimal  @db.Decimal(10, 2)
+  /// Precio para el canal DELIVERY. Null = usa `price` (mismo precio en todos
+  /// los canales). Permite cobrar el envío más caro sin tocar el precio de salón.
+  deliveryPrice Decimal? @map("delivery_price") @db.Decimal(10, 2)
+  /// Orden de aparición dentro de su categoría en la carta (menor primero).
+  sortOrder     Int      @default(0) @map("sort_order")
+  /// "86": agotado por hoy. A diferencia de `active` (baja permanente), esto es
+  /// un interruptor temporal — el producto sigue existiendo pero no se puede
+  /// pedir y se muestra "agotado" en la carta. El staff lo prende/apaga en el día.
+  soldOut       Boolean  @default(false) @map("sold_out")
+  /// Costo de producción del plato (insumos). Null = todavía no cargado. Con
+  /// esto, los reportes calculan el MARGEN por producto — el dueño sabe qué es
+  /// rentable, no solo qué se vende: el plato más pedido no siempre es el que
+  /// más gana. Se carga de a poco; nunca se muestra al comensal.
+  cost          Decimal? @db.Decimal(10, 2)
+  imageUrl      String?  @map("image_url")
+  active        Boolean  @default(true)
+  /// Un COMBO es un MenuItem con `isCombo=true`: tiene precio propio (el precio
+  /// del combo) y una lista de componentes (`comboComponents`). Se pide y cobra
+  /// como cualquier producto — el camino de pedido/POS/totales no cambia —; los
+  /// componentes son sólo para mostrarlos en el menú y en la cocina.
+  isCombo       Boolean  @default(false) @map("is_combo")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category        MenuCategory?     @relation(fields: [categoryId], references: [id])
+  station         KitchenStation?   @relation(fields: [stationId], references: [id])
+  orderItems      OrderItem[]
+  modifierGroups  ModifierGroup[]
+  /// Insumos que consume una unidad de este producto (receta). Al vender, el
+  /// stock de cada insumo baja `RecipeComponent.quantity * cantidad vendida`.
+  recipe          RecipeComponent[]
+  /// Si este item es un combo, sus componentes.
+  comboComponents ComboComponent[]  @relation("ComboToComponents")
+  /// En qué combos participa este item como componente.
+  usedInCombos    ComboComponent[]  @relation("ComponentOfCombos")
+
+  @@index([tenantId])
+  @@index([branchId, active])
+  @@map("menu_items")
+}
+
+/// Ficha de cliente (CRM). La base "viva" sigue derivándose de los pedidos por
+/// teléfono; este modelo es el OVERLAY editable a mano: corregir el nombre,
+/// agregar email/notas, o dar de alta un cliente que todavía no pidió. La
+/// identidad es el teléfono (único por tenant).
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  phone     String
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+/// Campaña de marketing enviada a un segmento de clientes (frecuentes,
+/// inactivos, nuevos). Guarda el mensaje y a cuántos se mandó, para tener
+/// historial. El envío real es por WhatsApp (best-effort, ver MarketingService).
+model MarketingCampaign {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  /// Clave del segmento apuntado: 'frequent' | 'inactive' | 'new'.
+  segment        String
+  message        String
+  recipientCount Int      @map("recipient_count")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  @@index([tenantId])
+  @@map("marketing_campaigns")
+}
+
+/// Insumo de inventario (harina, pan, gaseosa, etc.). El stock es POR SUCURSAL
+/// porque es físico de cada local. La unidad es libre ('g', 'ml', 'unidad'…) —
+/// el sistema no convierte, solo suma/resta en la misma unidad que cargó el dueño.
+model Ingredient {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  name        String
+  unit        String
+  stockQty    Decimal  @default(0) @map("stock_qty") @db.Decimal(14, 3)
+  /// Umbral de alerta de stock bajo (null = sin alerta).
+  lowStockAt  Decimal? @map("low_stock_at") @db.Decimal(14, 3)
+  /// Costo por unidad del insumo (opcional, para costeo futuro).
+  costPerUnit Decimal? @map("cost_per_unit") @db.Decimal(14, 4)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  branch        Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  recipeUses    RecipeComponent[]
+  movements     StockMovement[]
+  purchaseItems PurchaseOrderItem[]
+
+  @@unique([branchId, name])
+  @@index([tenantId])
+  @@map("ingredients")
+}
+
+/// Tipo de movimiento de stock — da trazabilidad a cada cambio de existencias.
+enum StockMovementType {
+  PURCHASE /// reposición / compra
+  ADJUST /// corrección manual
+  WASTE /// merma / desperdicio (con motivo)
+  COUNT /// ajuste por conteo físico
+  SALE /// consumo automático por venta (depleción)
+}
+
+/// Libro mayor de inventario: una fila por cada cambio de `Ingredient.stockQty`.
+/// `quantityDelta` es la variación (+ repone / − consume). Sin esto no se podía
+/// auditar el stock (quién/cuándo/por qué/cuánto).
+model StockMovement {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  ingredientId  String            @map("ingredient_id") @db.Uuid
+  type          StockMovementType
+  quantityDelta Decimal           @map("quantity_delta") @db.Decimal(14, 3)
+  reason        String?
+  /// Quién lo hizo (User.id, loose). Null para SALE (lo dispara la venta).
+  userId        String?           @map("user_id") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([ingredientId, createdAt])
+  @@map("stock_movements")
+}
+
+/// Proveedor de insumos (tenant-level: sirve a todas las sucursales).
+model Supplier {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  contactName String?  @map("contact_name")
+  phone       String?
+  email       String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT /// en armado, todavía no se pidió
+  ORDERED /// pedido al proveedor, esperando la mercadería
+  RECEIVED /// recibido → sumó al stock
+  CANCELLED
+}
+
+/// Orden de compra a un proveedor. Al RECIBIRLA, cada renglón suma al stock del
+/// insumo (StockMovement PURCHASE) y actualiza su costo unitario. Es por
+/// sucursal (el stock se recibe en una sucursal puntual).
+model PurchaseOrder {
+  id          String              @id @default(uuid()) @db.Uuid
+  tenantId    String              @map("tenant_id") @db.Uuid
+  branchId    String              @map("branch_id") @db.Uuid
+  supplierId  String              @map("supplier_id") @db.Uuid
+  status      PurchaseOrderStatus @default(DRAFT)
+  notes       String?
+  /// Total de la orden (Σ cantidad × costo unitario), precomputado.
+  total       Decimal             @default(0) @db.Decimal(12, 2)
+  createdById String?             @map("created_by_id") @db.Uuid
+  receivedAt  DateTime?           @map("received_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  branch   Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplier Supplier            @relation(fields: [supplierId], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@index([tenantId])
+  @@index([branchId, status])
+  @@map("purchase_orders")
+}
+
+/// Renglón de una orden de compra: qué insumo, cuánto y a qué costo unitario.
+model PurchaseOrderItem {
+  id              String  @id @default(uuid()) @db.Uuid
+  tenantId        String  @map("tenant_id") @db.Uuid
+  purchaseOrderId String  @map("purchase_order_id") @db.Uuid
+  ingredientId    String  @map("ingredient_id") @db.Uuid
+  quantity        Decimal @db.Decimal(14, 3)
+  unitCost        Decimal @map("unit_cost") @db.Decimal(14, 4)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id])
+
+  @@index([tenantId])
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+/// Renglón de receta: cuánto de un insumo consume UNA unidad de un producto.
+model RecipeComponent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  menuItemId   String   @map("menu_item_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  quantity     Decimal  @db.Decimal(14, 3)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, ingredientId])
+  @@index([tenantId])
+  @@index([ingredientId])
+  @@map("recipe_components")
+}
+
+/// Un componente de un combo: qué producto y qué cantidad entra en el combo.
+model ComboComponent {
+  id                  String @id @default(uuid()) @db.Uuid
+  tenantId            String @map("tenant_id") @db.Uuid
+  comboMenuItemId     String @map("combo_menu_item_id") @db.Uuid
+  componentMenuItemId String @map("component_menu_item_id") @db.Uuid
+  quantity            Int    @default(1)
+
+  combo     MenuItem @relation("ComboToComponents", fields: [comboMenuItemId], references: [id], onDelete: Cascade)
+  component MenuItem @relation("ComponentOfCombos", fields: [componentMenuItemId], references: [id])
+
+  @@index([tenantId])
+  @@index([comboMenuItemId])
+  @@map("combo_components")
+}
+
+/// Grupo de opciones configurables de un producto: "Extras", "Punto de
+/// cocción", "Quitar ingredientes". `maxSelect = 1` se renderiza como radio;
+/// > 1 como checkboxes.
+model ModifierGroup {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  menuItemId String   @map("menu_item_id") @db.Uuid
+  name       String
+  minSelect  Int      @default(0) @map("min_select")
+  maxSelect  Int      @default(1) @map("max_select")
+  required   Boolean  @default(false)
+  sortOrder  Int      @default(0) @map("sort_order")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  menuItem MenuItem         @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  options  ModifierOption[]
+
+  @@index([tenantId])
+  @@index([menuItemId, active])
+  @@map("modifier_groups")
+}
+
+/// Opción concreta dentro de un grupo. `priceDelta` puede ser 0 ("sin cebolla")
+/// o negativo (descuento por quitar algo), no solo positivo.
+model ModifierOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  groupId    String   @map("group_id") @db.Uuid
+  name       String
+  priceDelta Decimal  @default(0) @map("price_delta") @db.Decimal(10, 2)
+  sortOrder  Int      @default(0) @map("sort_order")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  group ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([groupId, active])
+  @@map("modifier_options")
+}
+
+// ============================================================================
+// FASE 1 — COCINA (KDS)
+// ============================================================================
+
+enum StationType {
+  HOT_KITCHEN
+  DRINKS
+  DESSERTS
+  GRILL
+}
+
+model KitchenStation {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  branchId  String      @map("branch_id") @db.Uuid
+  type      StationType
+  name      String
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  branch    Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[]
+  tasks     KitchenTask[]
+
+  @@unique([branchId, type])
+  @@index([tenantId])
+  @@map("kitchen_stations")
+}
+
+enum KitchenTaskStatus {
+  NEW
+  IN_PROGRESS
+  READY
+  DELIVERED
+}
+
+model KitchenTask {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  orderId     String            @map("order_id") @db.Uuid
+  stationId   String            @map("station_id") @db.Uuid
+  status      KitchenTaskStatus @default(NEW)
+  takenById   String?           @map("taken_by_id") @db.Uuid
+  startedAt   DateTime?         @map("started_at")
+  readyAt     DateTime?         @map("ready_at")
+  deliveredAt DateTime?         @map("delivered_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  station KitchenStation @relation(fields: [stationId], references: [id])
+  items   OrderItem[]
+
+  @@index([tenantId])
+  @@index([stationId, status])
+  @@index([orderId])
+  @@map("kitchen_tasks")
+}
+
+enum OrderStatus {
+  WAITING
+  ACCEPTED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  tenantId        String      @map("tenant_id") @db.Uuid
+  branchId        String      @map("branch_id") @db.Uuid
+  tableId         String?     @map("table_id") @db.Uuid
+  waiterId        String?     @map("waiter_id") @db.Uuid
+  type            OrderType   @default(DINE_IN)
+  status          OrderStatus @default(WAITING)
+  customerName    String?     @map("customer_name")
+  customerPhone   String?     @map("customer_phone")
+  notes           String?
+  subtotal        Decimal     @default(0) @db.Decimal(10, 2)
+  taxTotal        Decimal     @default(0) @map("tax_total") @db.Decimal(10, 2)
+  discountTotal   Decimal     @default(0) @map("discount_total") @db.Decimal(10, 2)
+  deliveryFee     Decimal?    @map("delivery_fee") @db.Decimal(10, 2)
+  total           Decimal     @default(0) @db.Decimal(10, 2)
+  acceptedAt      DateTime?   @map("accepted_at")
+  readyAt         DateTime?   @map("ready_at")
+  completedAt     DateTime?   @map("completed_at")
+  cancelledAt     DateTime?   @map("cancelled_at")
+  cancelReason    String?     @map("cancel_reason")
+  /// Quién canceló el pedido (User.id). Sin esto, una anulación —el vector de
+  /// fraude clásico: cobrar en efectivo y después anular— no dejaba rastro de
+  /// responsable. El motivo (`cancelReason`) ya existía pero no era obligatorio.
+  cancelledById   String?     @map("cancelled_by_id") @db.Uuid
+  billRequestedAt DateTime?   @map("bill_requested_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  table        Table?        @relation(fields: [tableId], references: [id])
+  items        OrderItem[]
+  kitchenTasks KitchenTask[]
+  billSplits   BillSplit[]
+  payments     Payment[]
+  discounts    Discount[]
+  invoice      Invoice?
+  delivery     Delivery?
+  feedback     Feedback?
+
+  @@index([tenantId])
+  @@index([branchId, status])
+  @@index([tableId])
+  @@map("orders")
+}
+
+/// Encuesta de calificación post-visita. El cron crea una fila por pedido
+/// cobrado (con teléfono) unas horas después y manda al cliente el link
+/// `/encuesta/:token` por WhatsApp; el cliente la completa desde ahí sin login.
+/// `rating`/`comment` quedan null hasta que responde. Una encuesta por pedido.
+model Feedback {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  orderId       String    @unique @map("order_id") @db.Uuid
+  branchId      String    @map("branch_id") @db.Uuid
+  /// Mozo que atendió (Order.waiterId) — para calificación por mozo. Null en
+  /// pedidos self-service por QR.
+  waiterId      String?   @map("waiter_id") @db.Uuid
+  /// Token del link público (aleatorio). Es la credencial de la encuesta.
+  token         String    @unique
+  customerPhone String?   @map("customer_phone")
+  /// 1-5. Null hasta que el cliente responde.
+  rating        Int?
+  comment       String?
+  /// Cuándo se envió el WhatsApp (lo setea el cron al crear la fila).
+  sentAt        DateTime? @map("sent_at")
+  /// Cuándo el cliente respondió (null = pendiente).
+  completedAt   DateTime? @map("completed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("feedbacks")
+}
+
+model OrderItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orderId       String   @map("order_id") @db.Uuid
+  menuItemId    String   @map("menu_item_id") @db.Uuid
+  kitchenTaskId String?  @map("kitchen_task_id") @db.Uuid
+  quantity      Int
+  /// Ronda en la que se agregó este ítem a la mesa: 1 = pedido inicial, 2 = la
+  /// segunda tanda que el mozo carga después ("agregame un postre"), etc. El
+  /// KDS los agrupa para no re-cocinar lo ya entregado.
+  round         Int      @default(1)
+  /// Precio unitario YA CON los extras sumados: `menuItem.price + Σ priceDelta`.
+  /// Invariante: `unitPrice * quantity` = total de la línea.
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(10, 2)
+  /// Texto libre del comensal: "sin cebolla", "bien cocido".
+  notes         String?
+  /// Snapshot desnormalizado de los modificadores elegidos:
+  /// `[{ groupName, optionName, priceDelta }]`. Se guarda el texto y el precio
+  /// del momento —no un FK— para que un pedido histórico no cambie si después
+  /// se renombra o desactiva la opción. Mismo criterio que `unitPrice`, que
+  /// tampoco joinea contra `MenuItem.price`.
+  modifiers     Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem     @relation(fields: [menuItemId], references: [id])
+  kitchenTask KitchenTask? @relation(fields: [kitchenTaskId], references: [id])
+
+  @@index([tenantId])
+  @@map("order_items")
+}
+
+// ============================================================================
+// FASE 2 — MESEROS (mapa de mesas, transferir, unir, dividir cuenta)
+// ============================================================================
+
+/// Auditoría de "Mesa 5 -> Mesa 8". Un pedido activo cambia de tableId.
+model TableTransferLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  fromTableId String   @map("from_table_id") @db.Uuid
+  toTableId   String   @map("to_table_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@map("table_transfer_logs")
+}
+
+/// Auditoría de "Mesa 10 + Mesa 11". Los pedidos de las mesas secundarias se
+/// cancelan y sus items se mueven al pedido de la mesa primaria.
+model TableMergeLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  primaryTableId String   @map("primary_table_id") @db.Uuid
+  mergedTableIds Json     @map("merged_table_ids")
+  resultOrderId  String   @map("result_order_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@map("table_merge_logs")
+}
+
+enum BillSplitMode {
+  BY_PERSON
+  BY_ITEM
+}
+
+model BillSplit {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  orderId   String        @map("order_id") @db.Uuid
+  paymentId String?       @unique @map("payment_id") @db.Uuid
+  mode      BillSplitMode
+  label     String
+  amount    Decimal       @db.Decimal(10, 2)
+  paid      Boolean       @default(false)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("bill_splits")
+}
+
+// ============================================================================
+// FASE 3 — PAGOS (cliente)
+// ============================================================================
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  QR
+  WALLET
+}
+
+enum PaymentProvider {
+  BANCARD
+  MERCADO_PAGO
+  STRIPE
+  DLOCAL
+  MOCK
+  CASH_MANUAL
+}
+
+model Payment {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  orderId           String           @map("order_id") @db.Uuid
+  method            PaymentMethod
+  provider          PaymentProvider?
+  status            PaymentStatus    @default(PENDING)
+  amount            Decimal          @db.Decimal(10, 2)
+  /// Propina, aparte del `amount` que cubre la cuenta. La versión anterior no
+  /// existía y el POS rechazaba con 400 cualquier pago mayor al total — o sea
+  /// "quedate con el vuelto", el gesto de propina más común de LATAM, era un
+  /// error de validación. Se atribuye al mozo vía `Order.waiterId`.
+  tipAmount         Decimal          @default(0) @map("tip_amount") @db.Decimal(10, 2)
+  currency          String           @default("PYG") @db.VarChar(3)
+  // Referencia tokenizada del proveedor — NUNCA número de tarjeta/CVV.
+  providerPaymentId String?          @map("provider_payment_id")
+  idempotencyKey    String           @unique @map("idempotency_key")
+  paidAt            DateTime?        @map("paid_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  order     Order      @relation(fields: [orderId], references: [id])
+  billSplit BillSplit?
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("payments")
+}
+
+enum WebhookScope {
+  CUSTOMER_PAYMENT
+  SAAS_BILLING
+}
+
+/// Tabla de sistema, NO tenant-scoped por el Prisma extension: un webhook
+/// llega sin JWT (sin request autenticada), así que no hay tenantId en
+/// contexto todavía cuando se loguea el evento crudo — se resuelve recién al
+/// encontrar el Payment (`providerPaymentId`) que referencia. Motor de
+/// idempotencia: único por (provider, eventId).
+model PaymentWebhookEvent {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String?      @map("tenant_id") @db.Uuid
+  scope          WebhookScope @default(CUSTOMER_PAYMENT)
+  provider       String
+  eventId        String       @map("event_id")
+  eventType      String       @map("event_type")
+  payload        Json
+  signatureValid Boolean      @map("signature_valid")
+  processedAt    DateTime?    @map("processed_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@map("payment_webhook_events")
+}
+
+// ============================================================================
+// FASE 4 — CAJA / POS (sesiones de caja, descuentos, cobro, facturación)
+// ============================================================================
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model CashRegisterSession {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  branchId      String            @map("branch_id") @db.Uuid
+  cashierId     String            @map("cashier_id") @db.Uuid
+  openedAt      DateTime          @default(now()) @map("opened_at")
+  closedAt      DateTime?         @map("closed_at")
+  openingAmount Decimal           @map("opening_amount") @db.Decimal(10, 2)
+  expectedCash  Decimal?          @map("expected_cash") @db.Decimal(10, 2)
+  countedCash   Decimal?          @map("counted_cash") @db.Decimal(10, 2)
+  difference    Decimal?          @db.Decimal(10, 2)
+  status        CashSessionStatus @default(OPEN)
+
+  branch    Branch         @relation(fields: [branchId], references: [id])
+  movements CashMovement[]
+
+  @@index([tenantId])
+  @@index([branchId, status])
+  @@map("cash_register_sessions")
+}
+
+enum CashMovementType {
+  SALE
+  REFUND
+  PAY_IN
+  PAY_OUT
+  DISCOUNT
+  /// Propina en efectivo: entra al cajón (suma al efectivo esperado) pero se
+  /// reporta aparte, para que no aparezca como un sobrante inexplicado en el
+  /// arqueo y para poder liquidarla al mozo.
+  TIP
+}
+
+model CashMovement {
+  id            String           @id @default(uuid()) @db.Uuid
+  tenantId      String           @map("tenant_id") @db.Uuid
+  sessionId     String           @map("session_id") @db.Uuid
+  type          CashMovementType
+  amount        Decimal          @db.Decimal(10, 2)
+  paymentMethod PaymentMethod?   @map("payment_method")
+  orderId       String?          @map("order_id") @db.Uuid
+  note          String?
+  /// Quién hizo el movimiento (User.id). Un PAY_OUT de 500.000 tiene que tener
+  /// un responsable — sin esto, sacar plata del cajón era anónimo. Los
+  /// movimientos automáticos (SALE/TIP generados por un cobro) van sin autor:
+  /// su responsable es el cobro, que ya queda atado al Payment.
+  createdById   String?          @map("created_by_id") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  session CashRegisterSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([sessionId])
+  @@map("cash_movements")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  COUPON
+}
+
+model Discount {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  type        DiscountType
+  // Para PERCENTAGE, `value` es el porcentaje (ej. 10 = 10%); para
+  // FIXED_AMOUNT/COUPON, `value` ya es el monto. `amount` es siempre el
+  // monto final resuelto en moneda, precomputado server-side.
+  value       Decimal      @db.Decimal(10, 2)
+  amount      Decimal      @db.Decimal(10, 2)
+  couponCode  String?      @map("coupon_code")
+  appliedById String       @map("applied_by_id") @db.Uuid
+  reason      String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("discounts")
+}
+
+enum CouponDiscountType {
+  PERCENTAGE /// `value` es un % (1-100)
+  FIXED_AMOUNT /// `value` es un monto en la moneda del tenant
+}
+
+/// Cupón de descuento REAL: código que el cliente tipea en la carta pública o
+/// presenta en caja. A diferencia del `Discount.couponCode` (texto libre, una
+/// etiqueta), acá el código se valida: existencia, vigencia, tope de usos y
+/// compra mínima. El canje queda en `CouponRedemption`.
+model Coupon {
+  id             String             @id @default(uuid()) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  /// Se guarda y se compara SIEMPRE en MAYÚSCULAS (el cliente tipea como quiere).
+  code           String
+  description    String?
+  discountType   CouponDiscountType @map("discount_type")
+  value          Decimal            @db.Decimal(10, 2)
+  /// Compra mínima para que aplique. Null = sin mínimo.
+  minOrderAmount Decimal?           @map("min_order_amount") @db.Decimal(10, 2)
+  /// Tope de canjes en total. Null = ilimitado.
+  maxUses        Int?               @map("max_uses")
+  usedCount      Int                @default(0) @map("used_count")
+  expiresAt      DateTime?          @map("expires_at")
+  active         Boolean            @default(true)
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  redemptions CouponRedemption[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("coupons")
+}
+
+/// Un canje concreto: qué cupón, en qué pedido y cuánto se descontó. Es el
+/// libro mayor del cupón (auditoría + base para límites por cliente).
+model CouponRedemption {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  couponId      String   @map("coupon_id") @db.Uuid
+  orderId       String   @map("order_id") @db.Uuid
+  amount        Decimal  @db.Decimal(10, 2)
+  customerPhone String?  @map("customer_phone")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([couponId])
+  @@map("coupon_redemptions")
+}
+
+enum InvoiceKind {
+  RECEIPT
+  FISCAL_INVOICE
+  CREDIT_NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+model Invoice {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  orderId     String        @unique @map("order_id") @db.Uuid
+  branchId    String        @map("branch_id") @db.Uuid
+  kind        InvoiceKind   @default(RECEIPT)
+  series      String
+  number      String
+  status      InvoiceStatus @default(ISSUED)
+  taxDetails  Json          @map("tax_details")
+  totalAmount Decimal       @map("total_amount") @db.Decimal(10, 2)
+  issuedAt    DateTime?     @map("issued_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  order  Order  @relation(fields: [orderId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, kind, series, number])
+  @@index([tenantId])
+  @@map("invoices")
+}
+
+/// Contador atómico de numeración fiscal por sucursal+serie. El `update`
+/// con `increment` de Prisma se traduce a un solo UPDATE de Postgres — el
+/// motor de DB serializa updates concurrentes sobre la misma fila, así que
+/// dos checkouts simultáneos nunca pueden terminar con el mismo número.
+model InvoiceCounter {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  branchId   String @map("branch_id") @db.Uuid
+  series     String
+  lastNumber Int    @default(0) @map("last_number")
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, series])
+  @@map("invoice_counters")
+}
+
+// ============================================================================
+// FASE 5 — DELIVERY (repartidores, zonas, asignación, tracking)
+// ============================================================================
+
+enum VehicleType {
+  MOTORCYCLE
+  BICYCLE
+  CAR
+  ON_FOOT
+}
+
+enum DriverAvailability {
+  ONLINE
+  OFFLINE
+  BUSY
+}
+
+model Driver {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  userId                String             @unique @map("user_id") @db.Uuid
+  phone                 String
+  photoUrl              String?            @map("photo_url")
+  documentNumber        String?            @map("document_number")
+  vehicleType           VehicleType        @map("vehicle_type")
+  licensePlate          String?            @map("license_plate")
+  availability          DriverAvailability @default(OFFLINE)
+  activeDeliveriesCount Int                @default(0) @map("active_deliveries_count")
+  ratingAvg             Decimal?           @map("rating_avg") @db.Decimal(3, 2)
+  totalDeliveries       Int                @default(0) @map("total_deliveries")
+  totalCancellations    Int                @default(0) @map("total_cancellations")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents  DriverDocument[]
+  locations  DriverLocation[]
+  deliveries Delivery[]
+
+  @@index([tenantId, availability])
+  @@map("drivers")
+}
+
+enum DriverDocumentType {
+  ID_CARD
+  DRIVER_LICENSE
+  VEHICLE_REGISTRATION
+  INSURANCE
+}
+
+enum DocumentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model DriverDocument {
+  id        String                     @id @default(uuid()) @db.Uuid
+  tenantId  String                     @map("tenant_id") @db.Uuid
+  driverId  String                     @map("driver_id") @db.Uuid
+  type      DriverDocumentType
+  fileUrl   String                     @map("file_url")
+  status    DocumentVerificationStatus @default(PENDING)
+  expiresAt DateTime?                  @map("expires_at")
+  createdAt DateTime                   @default(now()) @map("created_at")
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("driver_documents")
+}
+
+/// Historial/auditoría de posiciones. Fase 5 escribe cada ping acá
+/// directo (sin Redis todavía) — al volumen de un demo/piloto esto no
+/// satura la tabla; si el número de repartidores concurrentes crece,
+/// mover la posición "viva" a Redis y dejar esta tabla solo para
+/// auditoría/replay, tal como estaba pensado en el diseño original.
+model DriverLocation {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  driverId   String   @map("driver_id") @db.Uuid
+  lat        Decimal  @db.Decimal(9, 6)
+  lng        Decimal  @db.Decimal(9, 6)
+  speed      Decimal? @db.Decimal(6, 2)
+  accuracy   Decimal? @db.Decimal(6, 2)
+  recordedAt DateTime @map("recorded_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([driverId, recordedAt])
+  @@map("driver_locations")
+}
+
+enum DeliveryFeeType {
+  FIXED
+  BY_ZONE
+  BY_DISTANCE
+}
+
+model DeliveryZone {
+  id               String          @id @default(uuid()) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  branchId         String          @map("branch_id") @db.Uuid
+  name             String
+  areaGeoJson      Json?           @map("area_geo_json")
+  feeType          DeliveryFeeType @map("fee_type")
+  baseFee          Decimal         @map("base_fee") @db.Decimal(10, 2)
+  perKmFee         Decimal?        @map("per_km_fee") @db.Decimal(10, 2)
+  freeKmThreshold  Decimal?        @map("free_km_threshold") @db.Decimal(6, 2)
+  estimatedMinutes Int             @map("estimated_minutes")
+  minOrderAmount   Decimal?        @map("min_order_amount") @db.Decimal(10, 2)
+  scheduleJson     Json?           @map("schedule_json")
+  active           Boolean         @default(true)
+
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+
+  @@index([tenantId])
+  @@map("delivery_zones")
+}
+
+enum DeliveryStatus {
+  PENDING
+  DRIVER_ASSIGNED
+  ACCEPTED
+  PICKED_UP
+  DELIVERED
+  DRIVER_CANCELLED
+  CUSTOMER_CANCELLED
+  RESTAURANT_CANCELLED
+  FAILED
+}
+
+model Delivery {
+  id                String         @id @default(uuid()) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  orderId           String         @unique @map("order_id") @db.Uuid
+  zoneId            String?        @map("zone_id") @db.Uuid
+  driverId          String?        @map("driver_id") @db.Uuid
+  status            DeliveryStatus @default(PENDING)
+  addressLine       String         @map("address_line")
+  lat               Decimal?       @db.Decimal(9, 6)
+  lng               Decimal?       @db.Decimal(9, 6)
+  deliveryFee       Decimal        @map("delivery_fee") @db.Decimal(10, 2)
+  estimatedMinutes  Int?           @map("estimated_minutes")
+  confirmationCode  String         @map("confirmation_code") @db.VarChar(6)
+  proofPhotoUrl     String?        @map("proof_photo_url")
+  proofSignatureUrl String?        @map("proof_signature_url")
+  /// Calificación del cliente al repartidor (1-5) + comentario, desde el link
+  /// de tracking una vez entregado. Alimenta `Driver.ratingAvg`.
+  rating            Int?           @map("rating")
+  ratingComment     String?        @map("rating_comment")
+  assignedAt        DateTime?      @map("assigned_at")
+  acceptedAt        DateTime?      @map("accepted_at")
+  pickedUpAt        DateTime?      @map("picked_up_at")
+  deliveredAt       DateTime?      @map("delivered_at")
+  cancelledAt       DateTime?      @map("cancelled_at")
+  cancelReason      String?        @map("cancel_reason")
+  cancelledBy       String?        @map("cancelled_by")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  order     Order              @relation(fields: [orderId], references: [id])
+  zone      DeliveryZone?      @relation(fields: [zoneId], references: [id])
+  driver    Driver?            @relation(fields: [driverId], references: [id])
+  route     DeliveryRoute?
+  events    DeliveryEvent[]
+  incidents DeliveryIncident[]
+
+  @@index([tenantId])
+  @@index([driverId, status])
+  @@index([status])
+  @@map("deliveries")
+}
+
+model DeliveryRoute {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  deliveryId String   @unique @map("delivery_id") @db.Uuid
+  distanceKm Decimal? @map("distance_km") @db.Decimal(6, 2)
+  polyline   String?
+  provider   String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("delivery_routes")
+}
+
+model DeliveryEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  deliveryId String   @map("delivery_id") @db.Uuid
+  type       String
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([deliveryId, createdAt])
+  @@map("delivery_events")
+}
+
+enum IncidentType {
+  CUSTOMER_UNREACHABLE
+  WRONG_ADDRESS
+  DAMAGED_ORDER
+  DELAY
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  RESOLVED
+}
+
+model DeliveryIncident {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  deliveryId   String         @map("delivery_id") @db.Uuid
+  type         IncidentType
+  description  String?
+  status       IncidentStatus @default(OPEN)
+  reportedById String         @map("reported_by_id") @db.Uuid
+  resolvedAt   DateTime?      @map("resolved_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("delivery_incidents")
+}
+
+// ============================================================================
+// FASE 6 — SAAS BILLING (planes, suscripciones, DLocal)
+// ============================================================================
+
+/// Catálogo global de planes — a propósito NO tenant-scoped (mismo catálogo
+/// para todos los tenants, igual que `PaymentProvider` es un enum global y no
+/// algo que cada tenant define). `limits`/`features` como JSON: alcanza para
+/// el MVP, no hace falta normalizar a filas de feature-flags por tenant hasta
+/// que el spec real lo pida (ver nota de la Fase 10 del plan original).
+model Plan {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  name         String
+  priceMonthly Decimal  @map("price_monthly") @db.Decimal(10, 2)
+  currency     String   @default("USD") @db.VarChar(3)
+  /// Ej. {"maxBranches": 1, "maxUsers": 5} — consultado por BillingService
+  /// antes de crear una Branch nueva (ver BranchesService.create).
+  limits       Json
+  /// Ej. {"delivery": true, "whatsapp": false} — catálogo simple de features.
+  features     Json
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  subscriptions        Subscription[]        @relation("CurrentPlan")
+  pendingOnPlan        Subscription[]        @relation("PendingPlan")
+  subscriptionInvoices SubscriptionInvoice[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+}
+
+model Subscription {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @unique @map("tenant_id") @db.Uuid
+  planId        String             @map("plan_id") @db.Uuid
+  status        SubscriptionStatus @default(TRIAL)
+  /// Downgrade agendado: si no-null, en esta versión simplificada (sin
+  /// BullMQ/cron todavía — misma simplificación ya documentada en Fases 0-5)
+  /// se aplica en el momento del `change-plan` si el uso actual ya cabe en el
+  /// plan nuevo, en vez de esperar a `renewalDate`. El campo queda para
+  /// cuando se agregue el cron `subscription-billing` de la Fase 8.
+  pendingPlanId String?            @map("pending_plan_id") @db.Uuid
+  trialEndsAt   DateTime?          @map("trial_ends_at")
+  renewalDate   DateTime?          @map("renewal_date")
+  pastDueSince  DateTime?          @map("past_due_since")
+  cancelledAt   DateTime?          @map("cancelled_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan        Plan                  @relation("CurrentPlan", fields: [planId], references: [id])
+  pendingPlan Plan?                 @relation("PendingPlan", fields: [pendingPlanId], references: [id])
+  invoices    SubscriptionInvoice[]
+
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionInvoiceStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// ============================================================================
+// PANEL SUPER ADMIN (staff interno de Smartia)
+// ============================================================================
+
+/// Auditoría de TODA acción de escritura de un SUPER_ADMIN. A propósito NO
+/// tenant-scoped (no está en `TENANT_SCOPED_MODELS`): no pertenece a ningún
+/// tenant — es un registro de Smartia sobre lo que su propio staff le hizo a
+/// un tenant. Si estuviera scopeado, el extension le inyectaría el tenantId
+/// del super admin (el tenant sistema) y el log quedaría invisible.
+///
+/// `superAdminId`/`targetTenantId` sin FK a propósito — mismo criterio que
+/// `TableTransferLog.userId` y `Discount.appliedById`: un log de auditoría
+/// tiene que SOBREVIVIR al borrado de lo que audita. Con `onDelete: Cascade`
+/// (como Tenant->users), borrar un tenant se llevaría puesta justo la
+/// evidencia de qué le hizo el staff antes de borrarlo.
+model SuperAdminAuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  superAdminId   String   @map("super_admin_id") @db.Uuid
+  /// Ver `SUPER_ADMIN_AUDIT_ACTION` en super-admin.constants.ts.
+  action         String
+  targetTenantId String   @map("target_tenant_id") @db.Uuid
+  /// Contexto accionable de la acción: plan viejo -> plan nuevo, estado
+  /// previo, `reason` de la suspensión, etc.
+  detail         Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([targetTenantId])
+  @@map("super_admin_audit_logs")
+}
+
+model SubscriptionInvoice {
+  id                String                    @id @default(uuid()) @db.Uuid
+  tenantId          String                    @map("tenant_id") @db.Uuid
+  subscriptionId    String                    @map("subscription_id") @db.Uuid
+  planId            String                    @map("plan_id") @db.Uuid
+  amount            Decimal                   @db.Decimal(10, 2)
+  currency          String                    @default("USD") @db.VarChar(3)
+  status            SubscriptionInvoiceStatus @default(PENDING)
+  /// Referencia tokenizada de DLocal — nunca datos de tarjeta.
+  providerPaymentId String?                   @map("provider_payment_id")
+  periodStart       DateTime                  @map("period_start")
+  periodEnd         DateTime                  @map("period_end")
+  paidAt            DateTime?                 @map("paid_at")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@map("subscription_invoices")
+}
+
+// ============================================================================
+// FIDELIZACIÓN (puntos)
+// ============================================================================
+
+/// Programa de puntos del tenant (uno por tenant). El cliente acumula puntos
+/// al pagar y los canjea como descuento. `earnPer` = cuánto hay que gastar
+/// para ganar 1 punto; `pointValue` = cuánto vale cada punto al canjear.
+model LoyaltyProgram {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @unique @map("tenant_id") @db.Uuid
+  active     Boolean  @default(false)
+  earnPer    Decimal  @default(1000) @map("earn_per") @db.Decimal(10, 2)
+  pointValue Decimal  @default(50) @map("point_value") @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("loyalty_programs")
+}
+
+/// Cuenta de puntos de un cliente, identificado por teléfono (misma clave que
+/// la base de clientes derivada). `points` es el saldo; el ledger vive en
+/// `LoyaltyTransaction`.
+model LoyaltyAccount {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  phone     String
+  name      String?
+  points    Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  transactions LoyaltyTransaction[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("loyalty_accounts")
+}
+
+enum LoyaltyTxType {
+  EARN /// acreditación por un pago
+  REDEEM /// canje como descuento
+  ADJUST /// ajuste manual
+}
+
+/// Ledger de puntos: cada movimiento, para poder auditar el saldo.
+model LoyaltyTransaction {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  accountId String        @map("account_id") @db.Uuid
+  type      LoyaltyTxType
+  /// Positivo suma al saldo (EARN/ADJUST+), negativo lo resta (REDEEM/ADJUST-).
+  points    Int
+  orderId   String?       @map("order_id") @db.Uuid
+  note      String?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("loyalty_transactions")
+}
+
+enum VerificationPurpose {
+  SIGNUP /// alta de una cuenta nueva (el tenant todavía NO existe)
+  PASSWORD_RESET /// recuperación de una cuenta existente
+}
+
+/// Código de un solo uso enviado por mail, para alta y para recuperación.
+///
+/// Decisiones que hacen que esto sirva de algo:
+///
+///  - Se guarda el HASH del código, nunca el código. Quien lea la base no puede
+///    verificar cuentas ajenas (misma lógica que `confirmationCode` del delivery).
+///  - `attempts` + tope: seis dígitos son un millón de combinaciones, y sin
+///    límite se rompen en minutos con un script. Al pasarse, el código muere.
+///  - `payload` guarda los datos del alta (nombre del local, país, hash de la
+///    contraseña) hasta que el código se valida. Recién ahí nace el Tenant: si
+///    no, cada bot o cada tipeo dejaría un restaurante fantasma ocupando un
+///    slug —que es único global— y con su suscripción TRIAL corriendo.
+///  - NO tiene `tenantId`: en el alta el tenant todavía no existe, así que este
+///    modelo queda a propósito fuera del scoping por tenant.
+model VerificationCode {
+  id         String              @id @default(uuid()) @db.Uuid
+  email      String
+  purpose    VerificationPurpose
+  codeHash   String              @map("code_hash")
+  /// Datos del alta pendiente (sólo en SIGNUP). En PASSWORD_RESET va null.
+  payload    Json?
+  attempts   Int                 @default(0)
+  expiresAt  DateTime            @map("expires_at")
+  consumedAt DateTime?           @map("consumed_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("verification_codes")
+}

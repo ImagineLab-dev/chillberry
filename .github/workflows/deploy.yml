@@ -1,0 +1,70 @@
+# ============================================================================
+# ⚠️  TEMPLATE — NOT LIVE — WILL FAIL UNTIL CONFIGURED  ⚠️
+# ============================================================================
+#
+# This workflow is a placeholder for manual deploys. It is intentionally
+# wired up end-to-end (not a stub) so the shape is right once real infra
+# exists, but running it TODAY will fail, on purpose, because:
+#
+#   1. No hosting provider/host has been confirmed yet for Chillberry.
+#   2. The secrets it references do NOT exist in this repo's settings:
+#        - secrets.DEPLOY_HOST     (SSH host/IP of the target server)
+#        - secrets.DEPLOY_USER     (SSH user)
+#        - secrets.DEPLOY_SSH_KEY  (private key with access to that user)
+#      Without them, the `appleboy/ssh-action` step below fails immediately
+#      at the SSH connection step.
+#   3. The remote path `/opt/chillberry` is a PLACEHOLDER convention copied
+#      from other Smartia deployments, not a provisioned directory. It
+#      assumes a host that already has `infra/docker-compose.prod.yml`
+#      checked out at that path with a running Docker Compose stack.
+#   4. `infra/docker-compose.prod.yml` itself does not exist yet in this
+#      repo (only `infra/docker-compose.dev.yml` does, as of this writing).
+#
+# Do NOT assume this is live just because the file exists in `.github/workflows/`.
+# Before this can actually run:
+#   - [ ] Pick and provision a real host (VPS, cloud VM, etc.)
+#   - [ ] Create `infra/docker-compose.prod.yml`
+#   - [ ] Add the three secrets above in GitHub repo/environment settings
+#   - [ ] Update DEPLOY_PATH below if `/opt/chillberry` isn't the real path
+#   - [ ] Remove this warning block once verified working end-to-end
+#
+# Until then, treat any run of this workflow as expected-to-fail.
+# ============================================================================
+
+name: Deploy (manual, template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment to deploy'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  # PLACEHOLDER — confirm this matches the real deploy path once a host exists.
+  DEPLOY_PATH: /opt/chillberry
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SSH into host and roll out latest images
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ${{ env.DEPLOY_PATH }}
+            docker compose -f infra/docker-compose.prod.yml pull
+            docker compose -f infra/docker-compose.prod.yml up -d
+            docker compose -f infra/docker-compose.prod.yml exec -T api pnpm --filter @chillberry/api exec prisma migrate deploy

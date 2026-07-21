@@ -1,0 +1,149 @@
+# infra/docker-compose.prod.yml — stack de producción de Chillberry.
+#
+# Uso:
+#   1. Crear infra/.env.production (NO se commitea) con, como mínimo, las
+#      keys de apps/api/.env.example (DATABASE_URL, REDIS_URL,
+#      JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, WEB_ORIGIN, etc.) MÁS
+#      POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD para el container de
+#      Postgres. DATABASE_URL debe apuntar al hostname interno `postgres`
+#      (no localhost) y usar el mismo user/password/db que POSTGRES_*, ej:
+#        POSTGRES_DB=chillberry
+#        POSTGRES_USER=chillberry
+#        POSTGRES_PASSWORD=<fuerte, distinta a dev>
+#        DATABASE_URL=postgresql://chillberry:<esa-password>@postgres:5432/chillberry?schema=public
+#        REDIS_URL=redis://redis:6379
+#      Además debe incluir NEXT_PUBLIC_API_BASE_URL y NEXT_PUBLIC_SOCKET_URL
+#      (ej. https://chillberry.example.com/api y https://chillberry.example.com).
+#
+#      OJO: `env_file:` (usado por postgres/api más abajo) inyecta variables
+#      DENTRO de los containers, pero NO resuelve los `${...}` del propio
+#      YAML (los build `args:` del service `web`, y los `$${...}` escapados
+#      de los healthcheck). Para que esos también tomen infra/.env.production
+#      hay que pasar SIEMPRE `--env-file infra/.env.production` explícito:
+#   2. docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.production build
+#   3. Aplicar migraciones (fuera de este compose, ver comentario en el
+#      service `api` más abajo) y recién ahí:
+#      docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.production up -d
+#
+# No hay service de worker/BullMQ: este codebase no tiene proceso de
+# background separado, todo el trabajo "async" corre inline en el request.
+#
+# Nombres de volumes prefijados con `prod-` (vs. `postgres-data`/`redis-data`
+# de infra/docker-compose.dev.yml) para poder correr dev y prod en el mismo
+# host sin que Compose los confunda o pisen datos entre sí.
+
+name: chillberry-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chillberry-postgres-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env.production
+    volumes:
+      - prod-postgres-data:/var/lib/postgresql/data
+    # Sin ports: — solo accesible dentro de la red interna de Compose.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: chillberry-redis-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - prod-redis-data:/data
+    # Sin ports: — provisionado para paridad con dev / uso futuro, no
+    # consumido por el código de la app todavía. Solo accesible internamente.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: chillberry-api-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # No se publica el puerto al host: nginx es el único punto de entrada.
+    # Las migraciones (`pnpm --filter @chillberry/api prisma:deploy`) son
+    # responsabilidad del script de deploy, corridas ANTES de este `up`
+    # (ej. `docker compose run --rm api pnpm --filter @chillberry/api
+    # prisma:deploy` usando la misma imagen ya buildeada) — el container acá
+    # solo levanta `node dist/main.js`, no migra nada por su cuenta.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?debe definirse — ej. https://chillberry.example.com/api}
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:?debe definirse — ej. https://chillberry.example.com}
+    container_name: chillberry-web-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      api:
+        condition: service_healthy
+    # No se publica el puerto al host: nginx es el único punto de entrada.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    image: nginx:alpine
+    container_name: chillberry-nginx-prod
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Certificados de Let's Encrypt del host. Read-only: nginx sólo los lee,
+      # quien los renueva es certbot desde afuera del container.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Raíz del desafío ACME. Certbot escribe acá al renovar y nginx lo sirve
+      # por el puerto 80 (ver `location /.well-known/acme-challenge/`).
+      - /var/www/certbot:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      # 443 es el único puerto que sirve la app: el dominio es `.app` y los
+      # navegadores no abren HTTP ahí (HSTS preload).
+      - "443:443"
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  prod-postgres-data:
+  prod-redis-data:

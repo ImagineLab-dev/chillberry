@@ -1,0 +1,69 @@
+# Dockerfile.web — multi-stage para @chillberry/web (Next.js 15, App Router).
+# Build context: raíz del monorepo, ej:
+#   docker build -f infra/Dockerfile.web \
+#     --build-arg NEXT_PUBLIC_API_BASE_URL=https://example.com/api \
+#     --build-arg NEXT_PUBLIC_SOCKET_URL=https://example.com \
+#     -t chillberry-web .
+#
+# NEXT_PUBLIC_* se hornean en el bundle de cliente en build time (Next.js las
+# inlinea en el JS servido al browser, no las lee en runtime), por eso van
+# como ARG del builder y no como env_file del container en producción.
+
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /app
+
+# --- deps ---
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/domain/package.json packages/domain/
+COPY packages/shared-types/package.json packages/shared-types/
+RUN pnpm install --frozen-lockfile
+
+# --- builder: compila domain -> shared-types (dist real, @chillberry/web las
+# consume por package.json "main"/"types", aunque next.config.mjs las liste
+# en transpilePackages) y luego el propio @chillberry/web ---
+FROM base AS builder
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+COPY . .
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/domain/node_modules ./packages/domain/node_modules
+COPY --from=deps /app/packages/shared-types/node_modules ./packages/shared-types/node_modules
+RUN pnpm --filter @chillberry/domain build
+RUN pnpm --filter @chillberry/shared-types build
+# apps/web no tiene carpeta public/ en este repo todavía (no hay assets
+# estáticos propios aún). Se crea vacía para que el COPY de la etapa runner
+# no falle hoy, y para que empiece a andar sola el día que se agregue.
+RUN mkdir -p apps/web/public
+RUN pnpm --filter @chillberry/web build
+# `pnpm deploy` en vez de copiar apps/web/node_modules a mano — mismo motivo
+# que Dockerfile.api: los symlinks de pnpm hacia node_modules/.pnpm son
+# relativos, y copiarlos a otra profundidad de directorio los rompe.
+# Confirmado en la práctica con Dockerfile.api (el runner no arrancaba).
+RUN pnpm --filter @chillberry/web deploy --prod /app/deploy
+
+# --- runner ---
+FROM base AS runner
+ENV NODE_ENV=production
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 chillberry
+WORKDIR /app
+COPY --from=builder --chown=chillberry:nodejs /app/apps/web/.next ./.next
+COPY --from=builder --chown=chillberry:nodejs /app/apps/web/public ./public
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/package.json ./package.json
+COPY --from=builder --chown=chillberry:nodejs /app/deploy/node_modules ./node_modules
+
+USER chillberry
+EXPOSE 3000
+# "/" pasa por apps/web/src/middleware.ts y devuelve un redirect (302/307) —
+# alcanza con que responda, --spider no sigue el redirect pero sí confirma
+# que el proceso Next está vivo y respondiendo HTTP.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+CMD ["node", "node_modules/next/dist/bin/next", "start", "-p", "3000"]

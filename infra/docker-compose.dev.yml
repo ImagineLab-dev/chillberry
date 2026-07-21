@@ -1,0 +1,51 @@
+name: chillberry-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chillberry-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chillberry
+      POSTGRES_USER: chillberry
+      POSTGRES_PASSWORD: chillberry
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chillberry -d chillberry"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: chillberry-redis-dev
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: chillberry-adminer-dev
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+
+volumes:
+  postgres-data:
+  redis-data:

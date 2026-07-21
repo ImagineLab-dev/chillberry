@@ -1,0 +1,64 @@
+# .dockerignore — raíz del monorepo (build context de infra/Dockerfile.api y Dockerfile.web).
+#
+# IMPORTANTE: sin este archivo, `COPY . .` en la etapa builder de ambos
+# Dockerfiles arrastra el node_modules/dist/.next YA generados localmente
+# (Windows, dev) al build context. Como los Dockerfiles copian los
+# node_modules "buenos" (instalados dentro del container Linux) ANTES de
+# `COPY . .`, un .dockerignore ausente podía terminar mezclando artefactos
+# de plataforma equivocada (binarios nativos de argon2/Prisma, symlinks de
+# pnpm rotos) encima de los correctos. Igual se invirtió el orden de COPY
+# en los Dockerfiles como segunda capa de defensa — ver comentarios ahí.
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Env (nunca debe viajar en la imagen; se inyecta via env_file/ARG en runtime/build)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git / CI
+.git
+.github
+
+# Docker / data volumes (dev)
+infra/data/
+infra/.volumes/
+infra/secrets/
+
+# Backups
+backups/
+*.sql.gz

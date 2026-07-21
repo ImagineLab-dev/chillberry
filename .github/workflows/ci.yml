@@ -1,0 +1,272 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: '9.12.0'
+  NODE_VERSION: '20'
+  # Dummy-but-valid DATABASE_URL used only so `prisma generate` (schema loading,
+  # no live connection needed) and `tsc`/`eslint` type resolution of the
+  # generated Prisma client succeed. Matches infra/docker-compose.dev.yml creds.
+  CI_DATABASE_URL: 'postgresql://chillberry:chillberry@localhost:5432/chillberry?schema=public'
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # NOTE: turbo's `lint`/`typecheck` tasks only dependOn `^lint`/`^typecheck`
+      # (see turbo.json), NOT `^build`. `packages/domain` and
+      # `packages/shared-types` publish types via `dist/*.d.ts` (gitignored,
+      # not committed), so apps/api and apps/web cannot resolve
+      # `@chillberry/domain` / `@chillberry/shared-types` types on a fresh
+      # checkout without building those two packages first. Verified locally:
+      # removing packages/domain/dist and running `tsc --noEmit` on apps/api
+      # produces 44x TS2307 "Cannot find module '@chillberry/domain'" errors.
+      - name: Build workspace packages (required for cross-package type resolution)
+        run: |
+          pnpm --filter @chillberry/domain build
+          pnpm --filter @chillberry/shared-types build
+
+      # apps/api imports PrismaService (`@prisma/client`) in type-checked and
+      # type-aware-linted source. `@prisma/client` is a stub that re-exports
+      # from a generated `.prisma/client` directory that only exists after
+      # `prisma generate` runs — without it, both `tsc --noEmit` and the
+      # type-aware ESLint parser (parserOptions.project is set in
+      # apps/api/eslint.config.js) fail to resolve it. Generate only reads
+      # schema.prisma; it does not need a reachable database.
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chillberry
+          POSTGRES_USER: chillberry
+          POSTGRES_PASSWORD: chillberry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chillberry -d chillberry"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      # Required, no .default() in apps/api/src/config/env.ts (zod: min(32)).
+      # Obviously-fake values, only ever used inside this ephemeral CI job.
+      JWT_ACCESS_SECRET: 'ci_dummy_jwt_access_secret_only_for_github_actions_ci'
+      JWT_REFRESH_SECRET: 'ci_dummy_jwt_refresh_secret_only_for_github_actions_ci'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      # Applies every migration under apps/api/prisma/migrations against the
+      # service Postgres, so a migration that doesn't apply cleanly fails CI
+      # before merge instead of surfacing later.
+      - name: Apply database migrations
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      # Runs `turbo run test` -> vitest for apps/api. Currently 28 pure unit
+      # tests under apps/api/test/unit/*.test.ts (no DB access), but this job
+      # keeps the Postgres service so future integration tests have a home
+      # without a separate workflow job. turbo's `test` task dependsOn
+      # `^build`, so packages/domain and packages/shared-types are built
+      # automatically by turbo before vitest runs.
+      - name: Test
+        run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      NEXT_PUBLIC_API_BASE_URL: 'http://localhost:3001/api'
+      NEXT_PUBLIC_SOCKET_URL: 'http://localhost:3001'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # nest build (tsc-based) resolves `@prisma/client` types the same way
+      # typecheck does above — needs the generated client present first.
+      # No Postgres service needed here: generate doesn't connect to a DB.
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      # `turbo run build` builds packages/domain and packages/shared-types
+      # first via turbo's `dependsOn: ["^build"]` graph, then apps/api
+      # (nest build) and apps/web (next build) — no manual pre-build needed.
+      - name: Build
+        run: pnpm build
+
+  # Prueba que un backup se puede RESTAURAR de verdad, sin depender de prod.
+  # Genera un dump del schema real (vía prisma migrate sobre un Postgres
+  # efímero), lo comprime como lo haría backup.sh, y lo pasa por restore-test.sh
+  # contra OTRO Postgres efímero. Un backup nunca restaurado es una hipótesis;
+  # esto lo convierte en algo verificado en cada push.
+  restore-test:
+    name: Backup restore test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Levanta un Postgres "origen", aplica las migraciones para tener el
+      # schema real, y genera un dump con el MISMO formato que backup.sh
+      # (--clean --if-exists + gzip). Después restore-test.sh levanta su propio
+      # Postgres efímero y prueba restaurarlo ahí.
+      - name: Provision source DB and produce a backup
+        run: |
+          set -euo pipefail
+          docker run -d --name src-pg \
+            -e POSTGRES_DB=chillberry -e POSTGRES_USER=chillberry -e POSTGRES_PASSWORD=chillberry \
+            -p 5433:5432 postgres:16-alpine
+          for i in $(seq 1 30); do
+            docker exec src-pg pg_isready -U chillberry -d chillberry && break || sleep 1
+          done
+          export DATABASE_URL='postgresql://chillberry:chillberry@localhost:5433/chillberry?schema=public'
+          pnpm --filter @chillberry/api exec prisma migrate deploy
+          mkdir -p /tmp/backups
+          docker exec src-pg pg_dump --clean --if-exists -U chillberry chillberry > /tmp/backups/chillberry-backup-citest.sql
+          gzip -f /tmp/backups/chillberry-backup-citest.sql
+
+      - name: Restore the backup into an ephemeral DB and smoke-check
+        run: BACKUP_DIR=/tmp/backups bash infra/scripts/restore-test.sh
+
+  docker-build-and-push:
+    name: Docker Build & Push (GHCR)
+    needs: [lint-and-typecheck, test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR requires a lowercase path; github.repository_owner may contain
+      # uppercase characters (org/user names are case-insensitive on GitHub).
+      - name: Compute lowercase GHCR owner
+        run: echo "OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ASSUMPTION: infra/Dockerfile.api and infra/Dockerfile.web (build
+      # context = repo root) are being authored in parallel by another
+      # workstream and did not exist at the time this workflow was written.
+      # This job will fail with a "Dockerfile not found" error until those
+      # files are merged — that failure is expected, not a bug in this
+      # workflow.
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.api
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER_LC }}/chillberry-api:latest
+            ghcr.io/${{ env.OWNER_LC }}/chillberry-api:${{ github.sha }}
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.web
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER_LC }}/chillberry-web:latest
+            ghcr.io/${{ env.OWNER_LC }}/chillberry-web:${{ github.sha }}
