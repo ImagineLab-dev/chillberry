@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -14,7 +15,7 @@ export class KitchenController {
   // el board es quien avanza las tareas (`app/kitchen/page.tsx`).
   @Roles(USER_ROLE.Kitchen, USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('board')
-  board(@Query('branchId') branchId: string) {
+  board(@BranchScope() branchId: string) {
     return this.kitchen.listBoard(branchId);
   }
 
@@ -22,7 +23,7 @@ export class KitchenController {
   // asigna cada producto a una estación. El tablero de cocina no lo usa.
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('stations')
-  stations(@Query('branchId') branchId: string) {
+  stations(@BranchScope() branchId: string) {
     return this.kitchen.listStations(branchId);
   }
 

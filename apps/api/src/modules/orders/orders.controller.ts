@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { USER_ROLE, type OrderStatus } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,7 +28,7 @@ export class OrdersController {
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get()
   list(
-    @Query('branchId') branchId?: string,
+    @BranchScope() branchId?: string,
     @Query('status') status?: OrderStatus,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,

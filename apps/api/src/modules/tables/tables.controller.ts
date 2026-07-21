@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TablesService } from './tables.service';
@@ -23,7 +24,7 @@ export class TablesController {
   // `select` acotado — sin el token (ver `TABLE_SAFE_SELECT`).
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get()
-  list(@Query('branchId') branchId?: string) {
+  list(@BranchScope() branchId?: string) {
     return this.tables.list(branchId);
   }
 

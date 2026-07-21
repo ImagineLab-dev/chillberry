@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,7 +38,7 @@ export class MenuController {
   // público por QR (`public/menu/:qrToken`, @Public).
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('categories')
-  listCategories(@Query('branchId') branchId: string) {
+  listCategories(@BranchScope() branchId: string) {
     return this.menu.listCategories(branchId);
   }
 
@@ -63,7 +64,7 @@ export class MenuController {
   // admin/menu y admin/orders también.
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter)
   @Get('items')
-  listItems(@Query('branchId') branchId: string, @Query('includeInactive') includeInactive?: string) {
+  listItems(@BranchScope() branchId: string, @Query('includeInactive') includeInactive?: string) {
     return this.menu.listItems(branchId, includeInactive === 'true');
   }
 
@@ -99,7 +100,7 @@ export class MenuController {
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('combos')
-  listCombos(@Query('branchId') branchId: string, @Query('includeInactive') includeInactive?: string) {
+  listCombos(@BranchScope() branchId: string, @Query('includeInactive') includeInactive?: string) {
     return this.combos.list(branchId, includeInactive === 'true');
   }
 

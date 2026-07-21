@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { USER_ROLE } from '@chillberry/domain';
@@ -33,7 +34,7 @@ export class FeedbackController {
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('feedback')
   results(
-    @Query('branchId') branchId?: string,
+    @BranchScope() branchId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {

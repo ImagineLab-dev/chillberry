@@ -221,7 +221,7 @@ export default function LandingPage() {
           {/* `block` para que la frase destacada arranque siempre en su propia
               línea. Si se deja fluir, el quiebre cae donde entre y el "en"
               queda huérfano al final del primer renglón. */}
-          Todo tu restaurante, <span className="block text-primary">en una sola pantalla</span>
+          Todo tu restaurante <span className="block text-primary">en una sola pantalla</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
           Pedidos, cocina, caja, delivery y carta con QR trabajando juntos. Sin papeles, sin planillas y sin pagar

@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Controller, Get, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -11,7 +12,7 @@ export class ReportsController {
 
   // `branchId` opcional: sin él, reporte CONSOLIDADO de todas las sucursales.
   @Get('sales')
-  sales(@Query('branchId') branchId?: string, @Query('from') from?: string, @Query('to') to?: string) {
+  sales(@BranchScope() branchId?: string, @Query('from') from?: string, @Query('to') to?: string) {
     return this.reports.sales(branchId || undefined, from, to);
   }
 }

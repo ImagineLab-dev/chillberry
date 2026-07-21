@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, Length } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { USER_ROLE, type UserRole } from '@chillberry/domain';
 import { IsStrongPassword } from '../../../common/validators/strong-password.decorator';
 
@@ -41,4 +41,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsStrongPassword()
   password?: string;
+
+  /** Mover de sucursal. `null` la quita (pasa a ver todos los locales). */
+  @IsOptional()
+  @IsUUID()
+  branchId?: string | null;
 }

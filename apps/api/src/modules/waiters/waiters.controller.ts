@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -14,7 +15,7 @@ export class WaitersController {
   constructor(private readonly waiters: WaitersService) {}
 
   @Get('tables')
-  listTables(@Query('branchId') branchId: string) {
+  listTables(@BranchScope() branchId: string) {
     return this.waiters.listTables(branchId);
   }
 

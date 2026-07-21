@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { USER_ROLE } from '@chillberry/domain';
@@ -19,7 +20,7 @@ export class PosController {
   constructor(private readonly pos: PosService) {}
 
   @Get('orders/pending')
-  listPending(@Query('branchId') branchId: string) {
+  listPending(@BranchScope() branchId: string) {
     return this.pos.listPendingOrders(branchId);
   }
 
@@ -29,7 +30,7 @@ export class PosController {
   }
 
   @Get('cash-sessions/open')
-  getOpenSession(@Query('branchId') branchId: string) {
+  getOpenSession(@BranchScope() branchId: string) {
     return this.pos.getOpenSession(branchId);
   }
 
@@ -86,7 +87,7 @@ export class PosController {
   // Propinas por mozo en un rango — para liquidar el turno. `from`/`to` ISO.
   @Get('tips')
   tipsReport(
-    @Query('branchId') branchId: string,
+    @BranchScope() branchId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
@@ -99,7 +100,7 @@ export class PosController {
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('control')
   controlReport(
-    @Query('branchId') branchId: string,
+    @BranchScope() branchId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
@@ -111,7 +112,7 @@ export class PosController {
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('cash-sessions')
   listSessions(
-    @Query('branchId') branchId: string,
+    @BranchScope() branchId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {

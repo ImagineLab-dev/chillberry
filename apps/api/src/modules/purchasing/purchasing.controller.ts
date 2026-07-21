@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -34,7 +35,7 @@ export class PurchasingController {
   // ---- Órdenes de compra ----
 
   @Get('orders')
-  listOrders(@Query('branchId') branchId?: string, @Query('status') status?: string) {
+  listOrders(@BranchScope() branchId?: string, @Query('status') status?: string) {
     return this.purchasing.listPurchaseOrders(branchId || undefined, status || undefined);
   }
 

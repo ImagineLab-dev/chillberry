@@ -15,6 +15,9 @@ const SAFE_SELECT = {
   role: true,
   phone: true,
   active: true,
+  // La sucursal se devuelve para que la pantalla de equipo muestre dónde
+  // trabaja cada uno; sin esto el dueño no ve a quién le falta asignar.
+  branchId: true,
   createdAt: true,
 } as const;
 
@@ -39,6 +42,8 @@ export class UsersService {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
     if (existing) throw new ConflictException('Ya existe una cuenta con ese email');
 
+    await this.validarSucursal(dto.branchId);
+
     const passwordHash = await argon2.hash(dto.password);
     return this.tenantPrisma.client.user.create({
       data: {
@@ -48,6 +53,7 @@ export class UsersService {
         passwordHash,
         role: dto.role,
         phone: dto.phone,
+        branchId: dto.branchId ?? null,
       },
       select: SAFE_SELECT,
     });
@@ -88,6 +94,11 @@ export class UsersService {
     if (id === actingUser.id && dto.active === false) {
       throw new ForbiddenException('No podés desactivar tu propia cuenta');
     }
+
+    // Mover de sucursal: se valida que sea de este restaurante. `null` explícito
+    // la quita (el empleado pasa a ver todos los locales), por eso se compara
+    // contra `undefined` y no por truthy.
+    if (dto.branchId !== undefined) await this.validarSucursal(dto.branchId);
 
     // La contraseña (reset por owner/admin) no es un campo de User: se hashea y
     // se escribe como `passwordHash`. El resto del dto va tal cual.
@@ -157,4 +168,21 @@ export class UsersService {
     if (result.count === 0) throw new NotFoundException('Usuario no encontrado');
     return { ok: true };
   }
+  /**
+   * La sucursal tiene que existir y ser de ESTE restaurante.
+   *
+   * Se resuelve con el cliente tenant-scoped: si el id es de otro tenant,
+   * simplemente no aparece y se rechaza. Sin esto, un dueño podría atar a su
+   * empleado a la sucursal de otro restaurante — y ese empleado pasaría todos
+   * los controles de sucursal contra datos ajenos.
+   */
+  private async validarSucursal(branchId?: string | null): Promise<void> {
+    if (!branchId) return;
+    const branch = await this.tenantPrisma.client.branch.findFirst({
+      where: { id: branchId },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Sucursal no encontrada');
+  }
+
 }

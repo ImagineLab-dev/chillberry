@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,7 +38,7 @@ export class DeliveryController {
 
   @Roles(...STAFF_ROLES, USER_ROLE.Waiter, USER_ROLE.Cashier)
   @Get('zones')
-  listZones(@Query('branchId') branchId: string) {
+  listZones(@BranchScope() branchId: string) {
     return this.zones.list(branchId);
   }
 
@@ -181,7 +182,7 @@ export class DeliveryController {
   // Consola de despacho del owner: lista de deliveries de la sucursal.
   @Roles(...STAFF_ROLES)
   @Get()
-  list(@Query('branchId') branchId: string, @Query('status') status?: string) {
+  list(@BranchScope() branchId: string, @Query('status') status?: string) {
     return this.delivery.listForBranch(branchId, status);
   }
 

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -18,13 +19,13 @@ export class InventoryController {
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('ingredients')
-  listIngredients(@Query('branchId') branchId: string) {
+  listIngredients(@BranchScope() branchId: string) {
     return this.inventory.listIngredients(branchId);
   }
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('low-stock')
-  lowStock(@Query('branchId') branchId: string) {
+  lowStock(@BranchScope() branchId: string) {
     return this.inventory.lowStock(branchId);
   }
 

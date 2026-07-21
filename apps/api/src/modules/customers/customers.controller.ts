@@ -1,3 +1,4 @@
+import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Delete, Get, Post, Put, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -12,7 +13,7 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get()
-  list(@Query('branchId') branchId?: string, @Query('search') search?: string) {
+  list(@BranchScope() branchId?: string, @Query('search') search?: string) {
     return this.customers.list(branchId, search);
   }
 
