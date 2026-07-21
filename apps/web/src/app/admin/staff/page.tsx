@@ -180,20 +180,27 @@ export default function StaffPage() {
 
       <SettingsTabs />
 
-      <form onSubmit={onCreate} className="mb-6 flex flex-wrap gap-2">
+      {/* autoComplete cortado: este NO es el login del dueño, es el alta de otra
+          persona. Sin esto el navegador rellenaba el mail y la contraseña
+          guardados del dueño (parecía que el sistema los ponía solo). El
+          `new-password` es lo único que Chrome respeta de verdad para no
+          autocompletar la clave. */}
+      <form onSubmit={onCreate} className="mb-6 flex flex-wrap gap-2" autoComplete="off">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Nombre"
           required
+          autoComplete="off"
           className="input w-full sm:w-44"
         />
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
+          placeholder="Email del empleado"
           required
+          autoComplete="off"
           className="input w-full sm:w-52"
         />
         <input
@@ -203,6 +210,7 @@ export default function StaffPage() {
           placeholder="Contraseña"
           required
           minLength={8}
+          autoComplete="new-password"
           className="input w-full sm:w-44"
         />
         <select value={role} onChange={(e) => setRole(e.target.value)} className="input w-full sm:w-36">

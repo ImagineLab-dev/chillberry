@@ -131,6 +131,41 @@ export default function BillingPage() {
     }
   }
 
+  /**
+   * Contratar/pagar un plan (fin de la prueba, o upgrade).
+   *
+   * El backend devuelve `redirectUrl`: es el checkout de dLocal donde el cliente
+   * pone la tarjeta. Si viene, se lo lleva ahí — es el momento en que empieza a
+   * pagar de verdad. Sin `redirectUrl` (proveedor mock, hoy) se muestra un aviso.
+   */
+  async function subscribeToPlan(planId: string, planName: string) {
+    const res = await api.post<{ redirectUrl?: string | null }>('/billing/subscribe', { planId });
+    if (res.redirectUrl) {
+      window.location.href = res.redirectUrl;
+      return;
+    }
+    setNotice(
+      `Suscripción a "${planName}" iniciada. Con el cobro activo, acá te llevaría al checkout para cargar la tarjeta; el plan queda activo cuando se aprueba el pago.`,
+    );
+    await load();
+  }
+
+  /** Terminar la prueba y suscribirse al plan que ya se está usando. */
+  async function onActivate() {
+    if (!subscription) return;
+    if (!confirm(`¿Terminar la prueba y suscribirte al plan "${subscription.plan.name}"?`)) return;
+    setError(null);
+    setNotice(null);
+    setActing(true);
+    try {
+      await subscribeToPlan(subscription.planId, subscription.plan.name);
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setActing(false);
+    }
+  }
+
   async function onChoosePlan(plan: Plan) {
     // Cambiar de plan tiene impacto de facturación (un upgrade manda al cobro).
     // Se confirma para que no salga de un click accidental en la tarjeta.
@@ -140,15 +175,13 @@ export default function BillingPage() {
     setPendingPlanId(plan.id);
     try {
       if (subscription?.status === 'TRIAL') {
-        await api.post('/billing/subscribe', { planId: plan.id });
-        setNotice(
-          `Intento de suscripción a "${plan.name}" creado (sandbox DLocal). En producción esto redirige al checkout de DLocal; acá el plan se activa cuando llega el webhook de aprobación.`,
-        );
+        // En prueba, elegir un plan = suscribirse a ése (y terminar la prueba).
+        await subscribeToPlan(plan.id, plan.name);
       } else {
         await api.post('/billing/change-plan', { planId: plan.id });
         setNotice(`Plan actualizado a "${plan.name}".`);
+        await load();
       }
-      await load();
     } catch (err) {
       setError((err as ApiError).message);
     } finally {
@@ -216,14 +249,31 @@ export default function BillingPage() {
           </Alert>
         )}
 
-        {/* Acciones: cancelar (si está activa/prueba y no cancelada) o reactivar
-            (si hay una cancelación pendiente). El dueño es el único que las ve. */}
+        {/* En PRUEBA: la acción principal es terminar la prueba y suscribirse,
+            no cancelar. Sin esto, el dueño no tenía forma clara de pasar a pago
+            (tenía que bajar a "Planes disponibles" y adivinar que tocar su plan
+            significaba empezar a cobrar). */}
+        {isOwner && subscription.status === 'TRIAL' && !subscription.cancelledAt && (
+          <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <p className="text-sm text-foreground">
+              Estás en la prueba gratuita
+              {subscription.trialEndsAt ? ` hasta el ${new Date(subscription.trialEndsAt).toLocaleDateString()}` : ''}.
+              Cuando quieras, activá tu suscripción y seguí sin interrupciones.
+            </p>
+            <button type="button" onClick={onActivate} disabled={acting} className="btn btn-primary mt-3">
+              Activar suscripción — {subscription.plan.name}
+            </button>
+          </div>
+        )}
+
+        {/* Acciones secundarias: cancelar o reactivar. El dueño es el único que
+            las ve. */}
         <div className="mt-4 flex flex-wrap gap-2">
           {isOwner &&
             !subscription.cancelledAt &&
             (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && (
-              <button type="button" onClick={onCancel} disabled={acting} className="btn btn-danger btn-sm">
-                Cancelar suscripción
+              <button type="button" onClick={onCancel} disabled={acting} className="btn btn-ghost btn-sm">
+                {subscription.status === 'TRIAL' ? 'No continuar con la prueba' : 'Cancelar suscripción'}
               </button>
             )}
           {isOwner && subscription.cancelledAt && subscription.status !== 'CANCELLED' && (
