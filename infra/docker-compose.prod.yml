@@ -104,6 +104,11 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?debe definirse — ej. https://chillberry.example.com/api}
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:?debe definirse — ej. https://chillberry.example.com}
+        # Obligatoria: sin ella el front usa la clave de PRUEBA de Cloudflare y
+        # la API rechaza todos los tokens — login, registro y pedido público
+        # dejan de funcionar, sin ningún error en el build.
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:?debe definirse — clave de sitio de Cloudflare Turnstile}
+        NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:-}
     container_name: chillberry-web-prod
     restart: unless-stopped
     security_opt:

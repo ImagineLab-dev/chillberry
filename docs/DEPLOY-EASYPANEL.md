@@ -137,11 +137,17 @@ El container de la API arranca `node dist/main.js` y nada más: **no migra por s
 cuenta**. Desde la consola del servicio `api` en Easypanel:
 
 ```bash
-pnpm exec prisma migrate deploy
+node_modules/.bin/prisma migrate deploy
 ```
 
-Si el CLI de `prisma` no quedó en la imagen, el fallback es
-`npx prisma migrate deploy`.
+> **Usá el binario directo, no `pnpm exec prisma` ni `npx prisma`.** Probado
+> dentro de la imagen: `pnpm exec` dispara corepack, que intenta **descargar
+> pnpm 11 en pleno arranque** — y esa versión exige Node 22 mientras que la
+> imagen corre Node 20. Falla, y el error habla de versiones de Node, así que
+> parece cualquier cosa menos un problema de migraciones.
+>
+> Verificado: el binario carga el schema, resuelve el datasource y aplica las 8
+> migraciones. Lo único que no pude probar es la conexión real a tu Postgres.
 
 Sin este paso la API arranca pero falla en cada request contra la base, con
 errores de tabla inexistente.

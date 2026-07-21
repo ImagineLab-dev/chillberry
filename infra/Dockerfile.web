@@ -3,6 +3,8 @@
 #   docker build -f infra/Dockerfile.web \
 #     --build-arg NEXT_PUBLIC_API_BASE_URL=https://example.com/api \
 #     --build-arg NEXT_PUBLIC_SOCKET_URL=https://example.com \
+#     --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x... \
+#     --build-arg NEXT_PUBLIC_ROOT_DOMAIN=example.com \
 #     -t chillberry-web .
 #
 # NEXT_PUBLIC_* se hornean en el bundle de cliente en build time (Next.js las
@@ -26,10 +28,22 @@ RUN pnpm install --frozen-lockfile
 # consume por package.json "main"/"types", aunque next.config.mjs las liste
 # en transpilePackages) y luego el propio @chillberry/web ---
 FROM base AS builder
+# Las CUATRO que el front consume. Faltaba declarar las dos últimas, y el modo
+# de fallar era silencioso: Docker ignora un --build-arg que nadie declaró, el
+# build sale verde, y el problema aparece recién con usuarios reales.
+#
+# Sin NEXT_PUBLIC_TURNSTILE_SITE_KEY, `turnstile.tsx` cae a la clave de PRUEBA
+# de Cloudflare. El widget se dibuja y emite un token — pero la API lo valida
+# contra la clave secreta REAL, y Cloudflare rechaza esa combinación. Resultado:
+# login, registro y pedido público fallan TODOS, sin ningún error de build.
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_SOCKET_URL
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ARG NEXT_PUBLIC_ROOT_DOMAIN
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ENV NEXT_PUBLIC_ROOT_DOMAIN=$NEXT_PUBLIC_ROOT_DOMAIN
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules

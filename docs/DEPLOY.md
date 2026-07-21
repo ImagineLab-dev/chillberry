@@ -3,14 +3,21 @@
 Checklist real, en orden. Lo marcado **BLOQUEANTE** impide desplegar de forma
 segura; el resto degrada funcionalidad sin romper nada.
 
-Dos cosas están diseñadas para no dejarte olvidar lo importante:
+La **API no arranca** con `NODE_ENV=production` si algún secreto sigue en su
+valor de sandbox (`apps/api/src/config/env.ts` → `INSECURE_DEFAULTS`). Si eso te
+frena el deploy, es a propósito.
 
-- La **API no arranca** con `NODE_ENV=production` si algún secreto sigue en su
-  valor de sandbox (`apps/api/src/config/env.ts` → `INSECURE_DEFAULTS`).
-- El **build del front falla** si `NEXT_PUBLIC_TURNSTILE_SITE_KEY` no está
-  configurada (`apps/web/src/components/turnstile.tsx`).
-
-Si algo de esto te frena el deploy, es a propósito.
+> **El front NO tiene esa red de seguridad.** Si al construirlo falta
+> `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, el build sale **verde** y
+> `turnstile.tsx` cae a la clave de prueba de Cloudflare. El widget se dibuja y
+> emite un token, pero la API lo valida contra la clave secreta real y Cloudflare
+> rechaza esa combinación: **login, registro y pedido público fallan todos**, en
+> producción, sin una sola señal previa.
+>
+> Las cuatro `NEXT_PUBLIC_*` van como **build args** —
+> `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_SOCKET_URL`,
+> `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_ROOT_DOMAIN` — y hay que
+> verificarlo mirando el sitio, no el resultado del build.
 
 > ## ⚠️ Leé esto primero
 >
@@ -194,7 +201,7 @@ $CO build
 # 2. Migrar la base ANTES de levantar la app. El compose no migra solo: el
 #    container de la API arranca `node dist/main.js` y nada más. Esto levanta
 #    Postgres, espera a que esté healthy, corre las migraciones y se va.
-$CO run --rm api pnpm exec prisma migrate deploy
+$CO run --rm api node_modules/.bin/prisma migrate deploy
 
 # 3. Recién ahora, levantar todo.
 $CO up -d
