@@ -84,7 +84,7 @@ services:
           memory: 1G
 
   api:
-    image: chillberry-api:11
+    image: chillberry-api:12
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}

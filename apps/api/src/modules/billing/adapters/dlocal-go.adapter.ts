@@ -65,6 +65,11 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
         currency: input.currency,
         amount: input.amount,
         frequency_type: 'MONTHLY',
+        // OBLIGATORIO en la API real de dLocal (verificado contra el sandbox/prod
+        // el 21/07/2026: sin esto responde 400 "frequency_value cannot be null").
+        // 1 = una vez por mes. El adaptador no lo mandaba y el cobro habría
+        // fallado en el primer intento real.
+        frequency_value: 1,
       }),
     });
 
