@@ -11,6 +11,11 @@
 # Uso (las variables salen de /opt/chillberry/.env.prod):
 #   set -a; . /opt/chillberry/.env.prod; set +a
 #   docker stack deploy -c infra/stack.chillberry.yml chillberry
+#
+# LOS TAGS DE ABAJO SON LOS QUE CORREN EN PRODUCCIÓN. Subilos en cada release y
+# commiteá el cambio: Swarm no redespliega si el tag no cambia, y si este archivo
+# queda con un tag viejo, el próximo `stack deploy` BAJA producción a esa versión
+# sin avisar.
 
 version: '3.8'
 
@@ -43,7 +48,7 @@ services:
         condition: any
 
   api:
-    image: chillberry-api:1
+    image: chillberry-api:3
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}
@@ -86,7 +91,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:1
+    image: chillberry-web:3
     networks:
       easypanel:
         aliases:
