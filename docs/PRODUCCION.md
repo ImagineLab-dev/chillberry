@@ -142,6 +142,25 @@ curl -sI https://imaginelab.shop | head -1          # 200 — que no rompiste lo
 docker stack services chillberry                    # los 4 en 1/1
 ```
 
+## Aislamiento por sucursal — falta un paso TUYO
+
+Cada empleado puede estar atado a una sucursal: el dueño ve todos los locales,
+el resto (gerente, mozo, cajero, cocina) sólo el suyo. Está desplegado y probado,
+pero **hoy nadie tiene sucursal asignada**, así que el sistema se comporta igual
+que antes: todo el personal ve todos los locales.
+
+Es a propósito — desplegar esto no podía cortarle el acceso a nadie de golpe.
+Para activarlo, entrá a **Configuración → Equipo** y asignale su local a cada
+uno. Los que están sin asignar aparecen marcados en amarillo con "Todas las
+sucursales".
+
+Ese aviso importa: en un mozo o un cajero significa que ve la caja y la
+facturación de locales donde no trabaja. En el dueño es lo correcto y no lleva
+etiqueta.
+
+Cambiar a alguien de sucursal surte efecto cuando se le renueva el token, como
+mucho 15 minutos después.
+
 ## Lo que queda pendiente
 
 - **Rotar las credenciales** que pasaron por chat (API de Hostinger, root SSH,
@@ -153,3 +172,8 @@ docker stack services chillberry                    # los 4 en 1/1
   el día que se corrompa, no hay de dónde volver.
 - **Pagos con tarjeta del comensal**: sólo existe el adaptador simulado. Efectivo
   es lo único real.
+- **El repartidor puede auto-calificarse 5/5.** El link de seguimiento usa la
+  clave del pedido, que él conoce: marca entregado y califica antes que el
+  cliente. Eso le sube el promedio con el que el sistema reparte pedidos y
+  bloquea para siempre la calificación real. El arreglo de fondo es que el link
+  lleve un token propio en vez de la clave del pedido.
