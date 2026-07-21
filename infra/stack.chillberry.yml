@@ -47,8 +47,44 @@ services:
       restart_policy:
         condition: any
 
+  # Motor de ruteo propio: dibuja el camino por las calles en el seguimiento.
+  #
+  # Instancia PROPIA a propósito. El demo público router.project-osrm.org
+  # responde bien y es tentador, pero su política lo limita a desarrollo: usarlo
+  # en producción termina en bloqueo sin aviso, y ese día los clientes dejan de
+  # ver a su repartidor. Acá no hay API key, ni cuota, ni límite de consultas.
+  #
+  # Los datos ya procesados viven en el host (/opt/osrm/data, ~613 MB) porque
+  # generarlos es un paso aparte — ver /opt/osrm/procesar.sh. Se montan de sólo
+  # lectura: el servicio únicamente consulta.
+  #
+  # Sólo en la red interna: no se expone a internet ni a los otros proyectos
+  # del servidor.
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend
+    command: ["osrm-routed", "--algorithm", "mld", "/data/paraguay-latest.osrm"]
+    volumes:
+      - type: bind
+        source: /opt/osrm/data
+        target: /data
+        read_only: true
+    networks:
+      interna:
+        aliases:
+          - osrm
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          # El pico medido al procesar fue 516 MB; servir consume bastante
+          # menos. El tope existe para que un pico acá no le saque memoria al
+          # n8n ni al CRM, que comparten el servidor.
+          memory: 1G
+
   api:
-    image: chillberry-api:3
+    image: chillberry-api:4
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}
@@ -72,6 +108,8 @@ services:
       DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
       LOG_LEVEL: ${LOG_LEVEL}
+      ROUTING_PROVIDER: ${ROUTING_PROVIDER}
+      ROUTING_BASE_URL: ${ROUTING_BASE_URL}
     volumes:
       # Las fotos de los platos que sube cada restaurante. Sin este volumen
       # viven dentro del container y se pierden en cada redeploy.
@@ -91,7 +129,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:4
+    image: chillberry-web:5
     networks:
       easypanel:
         aliases:

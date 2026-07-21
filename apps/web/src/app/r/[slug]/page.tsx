@@ -8,6 +8,7 @@ import { formatMoney } from '@chillberry/domain';
 import { cartaThemeStyle, resolveCartaTheme, type CartaTheme } from '@/lib/carta-theme';
 import { Turnstile } from '@/components/turnstile';
 import { Alert, Badge, EmptyState, Skeleton, type Tone } from '@/components/ui';
+import { guardarPedidoEnCurso, leerPedidoEnCurso, olvidarPedidoEnCurso } from '@/lib/pedido-en-curso';
 
 type ModifierOptionView = { id: string; name: string; priceDelta: string };
 type ModifierGroupView = {
@@ -167,6 +168,33 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
   const [menu, setMenu] = useState<BranchMenu | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Pedido con envío que este navegador dejó a medias, para poder volver a seguirlo. */
+  const [pedidoEnCurso, setPedidoEnCurso] = useState<{ deliveryId: string; estado: string } | null>(null);
+
+  // ¿Este navegador dejó un pedido a medias? Se pregunta el estado real antes
+  // de mostrar nada: si ya se entregó o se canceló, se olvida en silencio en vez
+  // de ofrecer un seguimiento que no lleva a ningún lado.
+  useEffect(() => {
+    const guardado = leerPedidoEnCurso(slug);
+    if (!guardado) return;
+
+    let cancelado = false;
+    api
+      .get<{ status: string }>(`/track/${guardado.deliveryId}`, { publicEndpoint: true })
+      .then((t) => {
+        if (cancelado) return;
+        const terminado = t.status === 'DELIVERED' || t.status.includes('CANCELLED') || t.status === 'FAILED';
+        if (terminado) olvidarPedidoEnCurso(slug);
+        else setPedidoEnCurso({ deliveryId: guardado.deliveryId, estado: t.status });
+      })
+      .catch(() => {
+        // El delivery ya no existe (purgado, id inválido): se descarta.
+        olvidarPedidoEnCurso(slug);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [slug]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -413,6 +441,10 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
       // Delivery: el seguimiento vive en /track (mapa + repartidor por socket).
       if (res.fulfillment === 'DELIVERY' && res.deliveryId) {
+        // Se recuerda ANTES de redirigir: `/track/<uuid>` es un id aleatorio y
+        // si el cliente cierra la pestaña no tiene forma de volver. El link de
+        // la carta sí lo tiene a mano, así que desde acá lo puede recuperar.
+        guardarPedidoEnCurso(slug, res.deliveryId);
         router.push(`/track/${res.deliveryId}`);
         return;
       }
@@ -590,6 +622,23 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Oswald:wght@400;600&family=Nunito:wght@400;600;700&display=swap"
       />
+      {/* Volver al seguimiento. Es la razón de ser de esto: `/track/<uuid>` no
+          se puede adivinar, y si el cliente cerró esa pestaña el link de la
+          carta es lo único que le queda. Va arriba de todo y pegado, para que
+          lo encuentre sin buscar. */}
+      {pedidoEnCurso && (
+        <a
+          href={`/track/${pedidoEnCurso.deliveryId}`}
+          className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-primary px-4 py-3 text-primary-foreground"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <Bike className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Tenés un pedido en camino
+          </span>
+          <span className="shrink-0 text-sm underline underline-offset-2">Ver seguimiento</span>
+        </a>
+      )}
+
       {/* Portada de la sucursal según headerStyle: 'imagen' usa la foto de
           portada (con overlay para que el texto se lea); 'solido' un color plano
           de marca; 'gradiente' (default) el degradé de marca de siempre. */}
