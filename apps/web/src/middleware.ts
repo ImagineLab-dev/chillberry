@@ -43,6 +43,17 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: string[] }> = [
 // cualquier futura ruta top-level que empiece con esa letra.
 const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/r/', '/s/', '/encuesta'];
 
+/**
+ * Archivos que App Router genera en la raíz a partir de `app/` (icon.svg,
+ * apple-icon, opengraph-image, robots, sitemap...).
+ *
+ * Antes acá sólo figuraba `/favicon.ico`, así que al agregar `app/icon.svg` el
+ * middleware lo mandaba a /login: el navegador pedía el favicon y recibía HTML.
+ * El síntoma es engañoso — no da 404, "carga" algo — así que se ve como un
+ * favicon que no aparece y nada más.
+ */
+const ASSETS_RAIZ = /^\/(favicon\.ico|icon\.\w+|apple-icon\.?\w*|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml)$/;
+
 // Dominio raíz de la app en producción (ej. 'chillberry.io'). En dev, el host
 // es 'localhost:3000' y los subdominios se prueban con '<sub>.localhost:3000'.
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'localhost:3000';
@@ -80,7 +91,7 @@ export function middleware(request: NextRequest) {
   if (sub) {
     const isPassThrough =
       pathname.startsWith('/_next') ||
-      pathname === '/favicon.ico' ||
+      ASSETS_RAIZ.test(pathname) ||
       PUBLIC_PATHS.some(
         (p) => pathname.startsWith(p) && p !== '/login' && p !== '/register' && p !== '/recuperar',
       );
@@ -90,7 +101,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (ASSETS_RAIZ.test(pathname) || PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
@@ -124,5 +135,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|api).*)'],
 };
