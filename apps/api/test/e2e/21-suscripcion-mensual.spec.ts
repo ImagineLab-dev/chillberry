@@ -186,3 +186,30 @@ test.describe.serial('suscripción mensual', () => {
     expect(sub!.pendingPlanId).toBeNull();
   });
 });
+
+test.describe('cancelar y reactivar la suscripción', () => {
+  test('cancelar marca la fecha y deja el acceso; reactivar la limpia', async ({ request }) => {
+    // Tenant aislado (arranca en TRIAL) para no tocar la suscripción del demo.
+    const { token } = await nuevoTenant(request);
+
+    // Cancelar: no corta el acceso, sólo agenda el fin.
+    const cancel = await request.post('billing/cancel', { headers: authHeader(token) });
+    expect(cancel.ok(), await cancel.text()).toBeTruthy();
+    const cancelada = await cancel.json();
+    expect(cancelada.cancelledAt, 'queda la fecha de cancelación').not.toBeNull();
+    expect(['TRIAL', 'ACTIVE'], 'el acceso sigue hasta el fin del período').toContain(cancelada.status);
+
+    // Cancelar de nuevo: rechazado (ya hay una cancelación pendiente).
+    const otra = await request.post('billing/cancel', { headers: authHeader(token) });
+    expect(otra.status()).toBe(400);
+
+    // Reactivar: la fecha se limpia.
+    const react = await request.post('billing/reactivate', { headers: authHeader(token) });
+    expect(react.ok(), await react.text()).toBeTruthy();
+    expect((await react.json()).cancelledAt, 'la cancelación se deshizo').toBeNull();
+
+    // Reactivar sin cancelación pendiente: rechazado.
+    const react2 = await request.post('billing/reactivate', { headers: authHeader(token) });
+    expect(react2.status()).toBe(400);
+  });
+});

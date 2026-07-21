@@ -228,6 +228,57 @@ export class BillingService {
    * queda listo para cuando se agregue el cron `subscription-billing` de la
    * Fase 8 y esto pase a aplicarse recién en la renovación).
    */
+  /**
+   * Cancelar la suscripción — al FINAL del período, no al instante.
+   *
+   * Se marca `cancelledAt` y se deja el estado como está (TRIAL/ACTIVE): el
+   * restaurante sigue con acceso hasta la fecha de renovación que ya pagó, y
+   * recién ahí deja de renovarse. Cortar el acceso de golpe sería castigar a
+   * alguien que pagó el mes. Es reversible con `reactivate` hasta esa fecha.
+   *
+   * PENDIENTE para cuando dLocal esté activo: además de esto, hay que avisarle a
+   * dLocal que no cobre la próxima renovación (hoy el proveedor es mock y no hay
+   * suscripción real que frenar).
+   */
+  async cancelSubscription() {
+    const sub = await this.tenantPrisma.client.subscription.findUniqueOrThrow({
+      where: { tenantId: this.tenantPrisma.tenantId },
+    });
+    if (sub.status === 'CANCELLED') {
+      throw new BadRequestException('La suscripción ya está cancelada');
+    }
+    if (sub.cancelledAt) {
+      throw new BadRequestException('La suscripción ya tiene una cancelación programada');
+    }
+    return this.tenantPrisma.client.subscription.update({
+      where: { id: sub.id },
+      data: { cancelledAt: new Date(), pendingPlanId: null },
+      include: { plan: true, pendingPlan: true },
+    });
+  }
+
+  /** Deshacer una cancelación programada, mientras el período siga vigente. */
+  async reactivateSubscription() {
+    const sub = await this.tenantPrisma.client.subscription.findUniqueOrThrow({
+      where: { tenantId: this.tenantPrisma.tenantId },
+    });
+    if (!sub.cancelledAt) {
+      throw new BadRequestException('La suscripción no tiene ninguna cancelación pendiente');
+    }
+    // Si el super-admin ya la pasó a CANCELLED (o quedó suspendida), reactivar
+    // no es decisión del tenant.
+    if (sub.status === 'CANCELLED' || sub.status === 'SUSPENDED') {
+      throw new ForbiddenException(
+        'Tu suscripción ya no está activa. Escribinos a soporte@chillberry.app para reactivarla.',
+      );
+    }
+    return this.tenantPrisma.client.subscription.update({
+      where: { id: sub.id },
+      data: { cancelledAt: null },
+      include: { plan: true, pendingPlan: true },
+    });
+  }
+
   async changePlan(planId: string) {
     const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
     if (!plan || !plan.active) throw new NotFoundException('Plan no encontrado');

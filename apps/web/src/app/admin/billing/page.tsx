@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Check, FileText, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { getCurrentUser } from '@/lib/auth';
 import { Alert, Badge, EmptyState, PageHeader, type Tone } from '@/components/ui';
 import { SettingsTabs } from '@/components/settings-tabs';
 
@@ -23,6 +24,7 @@ type Subscription = {
   plan: Plan;
   trialEndsAt: string | null;
   renewalDate: string | null;
+  cancelledAt: string | null;
   usage: { branches: number; maxBranches: number; users: number; maxUsers: number };
 };
 
@@ -74,6 +76,9 @@ export default function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
+  const isOwner = role === 'OWNER';
 
   async function load() {
     const [p, s, i, f] = await Promise.all([
@@ -90,7 +95,41 @@ export default function BillingPage() {
 
   useEffect(() => {
     load().catch((err) => setError((err as ApiError).message));
+    getCurrentUser()
+      .then((m) => setRole(m.role))
+      .catch(() => {});
   }, []);
+
+  async function onCancel() {
+    if (!confirm('¿Cancelar tu suscripción? Vas a seguir con acceso hasta el final del período ya pagado.')) return;
+    setError(null);
+    setNotice(null);
+    setActing(true);
+    try {
+      await api.post('/billing/cancel');
+      setNotice('Suscripción cancelada. Seguís con acceso hasta el final del período.');
+      await load();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function onReactivate() {
+    setError(null);
+    setNotice(null);
+    setActing(true);
+    try {
+      await api.post('/billing/reactivate');
+      setNotice('Suscripción reactivada — se renueva normalmente.');
+      await load();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setActing(false);
+    }
+  }
 
   async function onChoosePlan(plan: Plan) {
     // Cambiar de plan tiene impacto de facturación (un upgrade manda al cobro).
@@ -161,11 +200,38 @@ export default function BillingPage() {
             Prueba gratuita hasta: {new Date(subscription.trialEndsAt).toLocaleDateString()}
           </p>
         )}
-        {subscription.renewalDate && (
+        {subscription.renewalDate && !subscription.cancelledAt && (
           <p className="text-sm text-muted-foreground">
             Renueva: {new Date(subscription.renewalDate).toLocaleDateString()}
           </p>
         )}
+
+        {/* Cancelación programada: se avisa hasta cuándo tiene acceso y se ofrece
+            deshacerla. Cancelar no corta al instante — el mes pagado se respeta. */}
+        {subscription.cancelledAt && subscription.status !== 'CANCELLED' && (
+          <Alert tone="warn" className="mt-3">
+            Tu suscripción está cancelada. Seguís con acceso
+            {subscription.renewalDate ? ` hasta el ${new Date(subscription.renewalDate).toLocaleDateString()}` : ''}, y
+            después no se renueva.
+          </Alert>
+        )}
+
+        {/* Acciones: cancelar (si está activa/prueba y no cancelada) o reactivar
+            (si hay una cancelación pendiente). El dueño es el único que las ve. */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {isOwner &&
+            !subscription.cancelledAt &&
+            (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && (
+              <button type="button" onClick={onCancel} disabled={acting} className="btn btn-danger btn-sm">
+                Cancelar suscripción
+              </button>
+            )}
+          {isOwner && subscription.cancelledAt && subscription.status !== 'CANCELLED' && (
+            <button type="button" onClick={onReactivate} disabled={acting} className="btn btn-primary btn-sm">
+              Reactivar suscripción
+            </button>
+          )}
+        </div>
       </div>
 
       {features && (

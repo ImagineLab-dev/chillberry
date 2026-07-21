@@ -52,4 +52,17 @@ export class BillingController {
   changePlan(@Body() dto: ChangePlanDto) {
     return this.billing.changePlan(dto.planId);
   }
+
+  // Cancelar/reactivar sólo el dueño: es una decisión de negocio, no operativa.
+  @Roles(USER_ROLE.Owner)
+  @Post('cancel')
+  cancel() {
+    return this.billing.cancelSubscription();
+  }
+
+  @Roles(USER_ROLE.Owner)
+  @Post('reactivate')
+  reactivate() {
+    return this.billing.reactivateSubscription();
+  }
 }
