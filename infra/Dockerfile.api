@@ -73,11 +73,23 @@ COPY --from=builder --chown=chillberry:nodejs /app/deploy/package.json ./package
 # tener que mantener un segundo patrón de copia parcial).
 COPY --from=builder --chown=chillberry:nodejs /app/deploy/prisma ./prisma
 
+# La app guarda las imágenes que sube el restaurante en `uploads/` y la crea al
+# arrancar. Como corre sin privilegios y /app es de root, ese mkdir fallaba con
+# EACCES y el container quedaba reiniciándose en bucle. Se crea acá, con dueño.
+#
+# En producción montá además un volumen en /app/uploads: sin eso, las imágenes
+# viven adentro del container y CADA REDEPLOY LAS BORRA.
+RUN mkdir -p /app/uploads && chown chillberry:nodejs /app/uploads
+
 # Las migraciones (prisma migrate deploy) son responsabilidad del script de
 # deploy que orquesta el release, NO se corren automáticamente acá. Este
 # container únicamente levanta la app ya compilada.
 USER chillberry
 EXPOSE 3001
+# 127.0.0.1 y NO `localhost`: la app escucha en 0.0.0.0 (sólo IPv4), pero en
+# Alpine `localhost` resuelve primero a ::1 y la conexión se rechaza. Con
+# `localhost` el healthcheck falla siempre, el orquestador da el container por
+# muerto y lo reinicia en bucle — aunque la API esté perfectamente sana.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3001/api/health/live || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3001/api/health/live || exit 1
 CMD ["node", "dist/main.js"]

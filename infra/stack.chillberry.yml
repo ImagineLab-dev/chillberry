@@ -1,0 +1,112 @@
+# Stack de Docker Swarm para el servidor de producción (72.60.51.162).
+#
+# Ese servidor NO es exclusivo de Chillberry: comparte Traefik con el n8n, el
+# CRM y los sitios de la agencia. Por eso este stack se integra en vez de
+# imponerse — no publica puertos, no toca la configuración de Traefik de los
+# otros, y sólo expone `api` y `web` a la red compartida `easypanel`.
+#
+# Postgres y Redis quedan en una red INTERNA del stack: no son alcanzables
+# desde los otros proyectos del servidor ni desde afuera.
+#
+# Uso (las variables salen de /opt/chillberry/.env.prod):
+#   set -a; . /opt/chillberry/.env.prod; set +a
+#   docker stack deploy -c infra/stack.chillberry.yml chillberry
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - interna
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - interna
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+  api:
+    image: chillberry-api:1
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      API_BASE_URL: ${API_BASE_URL}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+      MAIL_SANDBOX: ${MAIL_SANDBOX}
+      MOCK_PROVIDER_SECRET: ${MOCK_PROVIDER_SECRET}
+      DLOCAL_WEBHOOK_SECRET: ${DLOCAL_WEBHOOK_SECRET}
+      BILLING_PROVIDER: ${BILLING_PROVIDER}
+      DLOCAL_API_BASE: ${DLOCAL_API_BASE}
+      DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
+      LOG_LEVEL: ${LOG_LEVEL}
+    volumes:
+      # Las fotos de los platos que sube cada restaurante. Sin este volumen
+      # viven dentro del container y se pierden en cada redeploy.
+      - uploads:/app/uploads
+    networks:
+      interna:
+      easypanel:
+        # Traefik resuelve este nombre; tiene que coincidir con el `url` del
+        # archivo /etc/easypanel/traefik/config/chillberry.yaml.
+        aliases:
+          - chillberry-api
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+
+  web:
+    image: chillberry-web:1
+    networks:
+      easypanel:
+        aliases:
+          - chillberry-web
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+
+networks:
+  interna:
+    driver: overlay
+    # Sin salida a internet ni alcance desde otros stacks.
+    internal: true
+  easypanel:
+    external: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:

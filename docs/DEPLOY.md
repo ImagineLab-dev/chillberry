@@ -26,7 +26,7 @@ frena el deploy, es a propósito.
 > aplican** — el certbot fallaría por puerto ocupado y el nginx del compose no
 > podría levantar.
 >
-> **El procedimiento vigente está en [DEPLOY-EASYPANEL.md](DEPLOY-EASYPANEL.md).**
+> **El procedimiento vigente está en [PRODUCCION.md](PRODUCCION.md).**
 >
 > Este documento sigue siendo válido para todo lo demás (secretos, DNS,
 > integraciones, deuda conocida) y como referencia si algún día se sale de

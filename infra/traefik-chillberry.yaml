@@ -1,0 +1,59 @@
+# Enrutado de Chillberry para el Traefik compartido del servidor.
+# Se copia a /etc/easypanel/traefik/config/chillberry.yaml — Traefik lo toma
+# solo, sin reiniciar (proveedor de archivos con watch).
+#
+# Sigue el mismo patrón que los otros sitios del servidor (ver
+# imaginelab-landing.yaml). `certResolver: letsencrypt` hace que el certificado
+# se emita y se renueve automáticamente: por eso este despliegue no necesita
+# certbot ni renovaciones a mano.
+#
+# El orden importa: las reglas de /api y /socket.io llevan `priority` más alta
+# que la del front, porque el front matchea TODO el host. Sin esa prioridad,
+# Traefik podría mandar las llamadas a la API contra Next.js.
+
+http:
+  routers:
+    # --- API y tiempo real (prioridad alta: gana sobre el catch-all del front)
+    https-chillberry-api:
+      rule: "Host(`chillberry.app`) && (PathPrefix(`/api`) || PathPrefix(`/socket.io`))"
+      entryPoints: [https]
+      service: chillberry-api
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "chillberry.app"
+            sans:
+              - "www.chillberry.app"
+
+    # --- Front
+    https-chillberry-web:
+      rule: "Host(`chillberry.app`) || Host(`www.chillberry.app`)"
+      entryPoints: [https]
+      service: chillberry-web
+      priority: 10
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "chillberry.app"
+            sans:
+              - "www.chillberry.app"
+
+    # --- Puerto 80: sólo redirección. El dominio es .app (HSTS preload), así
+    #     que los navegadores ni siquiera intentan HTTP.
+    http-chillberry:
+      rule: "Host(`chillberry.app`) || Host(`www.chillberry.app`)"
+      entryPoints: [http]
+      service: chillberry-web
+      middlewares:
+        - redirect-to-https
+
+  services:
+    chillberry-api:
+      loadBalancer:
+        servers:
+          - url: "http://chillberry-api:3001/"
+    chillberry-web:
+      loadBalancer:
+        servers:
+          - url: "http://chillberry-web:3000/"
