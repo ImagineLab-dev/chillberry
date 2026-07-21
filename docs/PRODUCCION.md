@@ -234,9 +234,6 @@ mucho 15 minutos después.
   token de Emails, buzón, secret de Turnstile).
 - **Sin monitoreo de errores**: no hay Sentry. Si algo revienta en producción,
   te enterás por el cliente.
-- **Sin backup automático de la base.** El volumen `chillberry_postgres-data`
-  vive en este servidor y nada lo respalda hoy. Es la deuda más cara de las tres:
-  el día que se corrompa, no hay de dónde volver.
 - **Pagos con tarjeta del comensal**: sólo existe el adaptador simulado. Efectivo
   es lo único real.
 - **El cobro de las suscripciones NO está activo.** `BILLING_PROVIDER=mock` y

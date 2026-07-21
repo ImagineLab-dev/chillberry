@@ -1,0 +1,17 @@
+{
+  "name": "Chillberry",
+  "short_name": "Chillberry",
+  "description": "El sistema completo para tu restaurante.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#5533DB",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

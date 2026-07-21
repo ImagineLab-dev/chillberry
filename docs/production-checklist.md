@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Chillberry es un SaaS multi-tenant para restaurantes (menú QR, pedidos, cocina/KDS, meseros, caja/POS, pagos, delivery propio y facturación SaaS), backend NestJS 11 + Prisma 6 + PostgreSQL (`apps/api`) y frontend Next.js 15 (`apps/web`). Esta revisión verificó, leyendo el código fuente directamente (no por inferencia), el aislamiento multi-tenant, autenticación, manejo de secretos, seguridad de webhooks de pago/billing y RBAC — el detalle está en "Hallazgos" más abajo. A la fecha de esta revisión, DLocal (pagos SaaS), el proveedor de pago de clientes y WhatsApp corren en modo sandbox/mock salvo que se configuren credenciales reales; no hay cola de jobs (BullMQ) ni Redis en uso real todavía.
+Chillberry es un SaaS multi-tenant para restaurantes (menú QR, pedidos, cocina/KDS, meseros, caja/POS, pagos, delivery propio y facturación SaaS), backend NestJS 11 + Prisma 6 + PostgreSQL (`apps/api`) y frontend Next.js 15 (`apps/web`). Esta revisión verificó, leyendo el código fuente directamente (no por inferencia), el aislamiento multi-tenant, autenticación, manejo de secretos, seguridad de webhooks de pago/billing y RBAC — el detalle está en "Hallazgos" más abajo. A la fecha de esta revisión, DLocal (pagos SaaS), el proveedor de pago de clientes y los avisos push corren en modo sandbox/mock salvo que se configuren credenciales reales; no hay cola de jobs (BullMQ) ni Redis en uso real todavía.
 
 ---
 
@@ -39,7 +39,7 @@ Chillberry es un SaaS multi-tenant para restaurantes (menú QR, pedidos, cocina/
 
 - [ ] DLocal: credenciales reales configuradas solo si se va a cobrar suscripciones SaaS reales — mientras no se configuren, el sistema sigue funcionando en modo sandbox (`mock-dlocal.adapter.ts`) sin llamadas externas. Explícitamente opcional para el primer lanzamiento.
 - [ ] Proveedor de pago de clientes (pedidos): mismo patrón sandbox (`mock-payment.adapter.ts`) — configurar el proveedor real (Bancard/MercadoPago/Stripe/etc., aún no implementado, solo el mock) cuando se decida cobrar pagos electrónicos reales de pedidos.
-- [ ] WhatsApp (Meta Cloud API): `WHATSAPP_API_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` configurados solo si se quieren notificaciones reales — sin ellos, `whatsapp.adapter.ts` cae a modo sandbox (loguea el mensaje simulado, no lo envía) sin romper el flujo de "pedido completado". Explícitamente opcional.
+- [ ] Avisos push (VAPID): `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` configurados — sin ellos, `push/push.adapter.ts` cae a modo sandbox (loguea el aviso, no lo envía) y el front recibe `key: null` y no muestra el botón. Reemplazaron a WhatsApp.
 
 ### Monitoreo
 
@@ -72,7 +72,7 @@ Todo lo siguiente fue verificado leyendo el código fuente directamente (no asum
 - No hay cola de jobs (BullMQ) — el trabajo en background corre de forma síncrona en el mismo request. `REDIS_URL` está declarado en el schema de env pero no se usa en ningún lado del código actual (confirmado por grep) más allá de la variable y un comentario sobre Fase 8+.
 - No hay ubicación de repartidor en vivo respaldada por Redis — se escribe directo a Postgres (`DriverLocation`).
 - Proveedor de pago de clientes y DLocal (SaaS billing) corren en modo mock/sandbox (`mock-payment.adapter.ts`, `mock-dlocal.adapter.ts`) — cualquier proveedor real (Bancard, MercadoPago, Stripe, DLocal real) todavía no está implementado, solo el adapter simulado con firma HMAC real para poder probar el flujo completo.
-- WhatsApp cae a modo sandbox (loguea el mensaje simulado) si `WHATSAPP_API_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` no están configurados — confirmado en `whatsapp.adapter.ts`.
+- Los avisos push caen a modo sandbox (loguean el aviso) si `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` no están configurados — confirmado en `push/push.adapter.ts`.
 - No hay cron para downgrade de suscripción en la fecha de renovación — se aplica inmediatamente en `changePlan()` si el uso actual ya cabe en el plan nuevo (documentado explícitamente en `billing.service.ts` y en el comentario del campo `pendingPlanId` en `schema.prisma`, pendiente de un cron `subscription-billing` de Fase 8).
 
 ### Hallazgo real — a resolver antes de producción

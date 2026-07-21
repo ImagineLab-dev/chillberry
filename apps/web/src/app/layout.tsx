@@ -24,6 +24,13 @@ const body = DM_Sans({
 export const metadata: Metadata = {
   title: 'Chillberry',
   description: 'Plataforma SaaS para restaurantes',
+  // El manifest es lo que le falta a iOS para recibir avisos push. Safari sólo
+  // expone `PushManager` cuando el sitio está agregado a la pantalla de inicio
+  // como app, y eso requiere un manifest con `display: standalone`. Sin él, en
+  // iPhone el botón "Avisame cuando esté listo" ni se muestra — y como se sacó
+  // WhatsApp, ese público quedaba sin ningún canal de aviso.
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'Chillberry', statusBarStyle: 'default' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

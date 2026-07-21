@@ -155,6 +155,15 @@ export class WaitersService {
           where: { orderId: order.id },
           data: { orderId: primaryOrder.id },
         });
+        // Las comandas de cocina también se mueven al pedido primario. Sin esto
+        // quedaban colgadas del pedido secundario, que se cancela abajo — y el
+        // KDS filtra las tareas de pedidos cancelados, así que los platos aún no
+        // cocinados de la mesa fusionada desaparecían del tablero (seguían en la
+        // cuenta, pero la cocina nunca los veía).
+        await this.tenantPrisma.client.kitchenTask.updateMany({
+          where: { orderId: order.id },
+          data: { orderId: primaryOrder.id },
+        });
         addedSubtotal += Number(order.subtotal);
         await this.tenantPrisma.client.order.update({
           where: { id: order.id },

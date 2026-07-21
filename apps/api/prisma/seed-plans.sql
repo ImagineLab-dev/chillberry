@@ -19,13 +19,13 @@ INSERT INTO plans (id, code, name, price_monthly, currency, limits, features, ac
 VALUES
   (gen_random_uuid(), 'STARTER', 'Starter', 29, 'USD',
    '{"maxBranches": 1, "maxUsers": 5}'::jsonb,
-   '{"delivery": true, "whatsapp": true, "invoicing": true}'::jsonb, true, 0),
+   '{"delivery": true, "push": true, "invoicing": true}'::jsonb, true, 0),
   (gen_random_uuid(), 'PRO', 'Pro', 79, 'USD',
    '{"maxBranches": 3, "maxUsers": 15}'::jsonb,
-   '{"delivery": true, "whatsapp": true, "invoicing": true}'::jsonb, true, 1),
+   '{"delivery": true, "push": true, "invoicing": true}'::jsonb, true, 1),
   (gen_random_uuid(), 'ENTERPRISE', 'Enterprise', 199, 'USD',
    '{"maxBranches": 10, "maxUsers": 50}'::jsonb,
-   '{"delivery": true, "whatsapp": true, "invoicing": true}'::jsonb, true, 2)
+   '{"delivery": true, "push": true, "invoicing": true}'::jsonb, true, 2)
 ON CONFLICT (code) DO UPDATE SET
   name          = EXCLUDED.name,
   price_monthly = EXCLUDED.price_monthly,

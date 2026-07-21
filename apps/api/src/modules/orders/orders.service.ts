@@ -157,7 +157,13 @@ export class OrdersService {
     const newSubtotal = Number(order.subtotal) - lineTotal;
     this.assertDiscountFits(order, newSubtotal);
 
-    await this.tenantPrisma.client.orderItem.deleteMany({ where: { id: itemId, orderId } });
+    // El delta se aplica SÓLO si este delete fue el que realmente borró la fila.
+    // Sin este guard, dos taps del mozo (o dos requests) borran el ítem una vez
+    // pero restan el total dos veces: el segundo delete no encuentra nada
+    // (count=0) pero antes se restaba igual, dejando el total por debajo de lo
+    // real y de forma permanente.
+    const borrado = await this.tenantPrisma.client.orderItem.deleteMany({ where: { id: itemId, orderId } });
+    if (borrado.count === 0) return this.getOrThrow(orderId);
     await this.applySubtotalDelta(orderId, -lineTotal);
 
     // Si la KitchenTask del ítem quedó vacía, se borra (sino el KDS mostraría
@@ -199,7 +205,15 @@ export class OrdersService {
     const newSubtotal = Number(order.subtotal) + delta;
     this.assertDiscountFits(order, newSubtotal);
 
-    await this.tenantPrisma.client.orderItem.updateMany({ where: { id: itemId, orderId }, data: { quantity } });
+    // El where incluye la cantidad LEÍDA: así el update sólo pega si nadie la
+    // cambió en el medio. Si dos "eran 2 no 3" concurrentes pasaran los dos, el
+    // segundo no matchea (la cantidad ya no es la que leyó) y su delta stale no
+    // se aplica — antes ambos restaban y el subtotal bajaba el doble.
+    const cambiado = await this.tenantPrisma.client.orderItem.updateMany({
+      where: { id: itemId, orderId, quantity: item.quantity },
+      data: { quantity },
+    });
+    if (cambiado.count === 0) return this.getOrThrow(orderId);
     await this.applySubtotalDelta(orderId, delta);
     this.kitchen.notifyTasksChanged(order.branchId, orderId);
 

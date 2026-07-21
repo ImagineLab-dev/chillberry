@@ -344,12 +344,19 @@ export class PaymentsService {
     });
     if (!order || order.status === 'COMPLETED' || order.status === 'CANCELLED') return;
 
-    const hasSplits = order.billSplits.length > 0;
-    const fullyPaid = hasSplits
-      ? order.billSplits.every((s) => s.paid)
-      : order.payments
-          .filter((p) => p.status === 'APPROVED')
-          .reduce((sum, p) => sum + Number(p.amount), 0) >= Number(order.total) - APPROVAL_TOLERANCE;
+    // Lo aprobado, mire o no los splits. Es la fuente de verdad de la plata que
+    // entró.
+    const aprobado = order.payments
+      .filter((p) => p.status === 'APPROVED')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const cubreTotal = aprobado >= Number(order.total) - APPROVAL_TOLERANCE;
+
+    // Con splits, basta con que TODOS estén pagados. Pero también se cierra si
+    // el total ya se cobró sin haber elegido una parte: antes, cobrar la cuenta
+    // dividida de un saque (efectivo, sin seleccionar split) dejaba la plata
+    // adentro y el pedido trabado para siempre — sin factura, sin stock, sin
+    // liberar la mesa, e imposible de re-cobrar. El `|| cubreTotal` lo cierra.
+    const fullyPaid = order.billSplits.length > 0 ? order.billSplits.every((s) => s.paid) || cubreTotal : cubreTotal;
 
     if (!fullyPaid) return;
 

@@ -9,7 +9,7 @@
  * está la persona.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001/api';
+import { api } from './api-client';
 
 /**
  * La clave VAPID viaja en base64url y `PushManager` la quiere en bytes.
@@ -42,10 +42,11 @@ export function permisoPush(): NotificationPermission | null {
 /**
  * Pide permiso, registra el service worker y da de alta el dispositivo.
  *
- * @param ruta Endpoint donde queda registrado. El comensal usa el de su
- *   seguimiento (`push/suscribir/seguimiento/<token>`), donde su identidad sale
- *   del token; el personal usa `push/suscribir` con su sesión.
- * @param conAuth Manda las cookies de sesión (para el personal).
+ * @param ruta Endpoint donde queda registrado, relativa (ej. `/push/suscribir`).
+ *   El comensal usa el de su seguimiento (`/push/suscribir/seguimiento/<token>`),
+ *   donde su identidad sale del token; el personal usa `/push/suscribir`.
+ * @param conAuth Si el endpoint necesita sesión (el personal). El del comensal
+ *   es público, así que va en `false`.
  */
 export async function activarPush(ruta: string, conAuth = false): Promise<boolean> {
   if (!pushSoportado()) return false;
@@ -59,8 +60,11 @@ export async function activarPush(ruta: string, conAuth = false): Promise<boolea
       Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
     if (permiso !== 'granted') return false;
 
-    const res = await fetch(`${API_BASE}/push/clave-publica`);
-    const { key } = (await res.json()) as { key: string | null };
+    // Por `api`, no por `fetch` crudo: así el alta del PERSONAL manda el header
+    // `Authorization: Bearer` (el token vive en cookie, pero la API lo lee del
+    // header, no de la cookie). Con el fetch crudo el endpoint del personal
+    // daba 401 siempre y el botón fallaba en silencio.
+    const { key } = await api.get<{ key: string | null }>('/push/clave-publica', { publicEndpoint: true });
     // Sin clave configurada en el servidor no hay push. Se sale en silencio:
     // es un problema de configuración, no algo que el usuario pueda resolver.
     if (!key) return false;
@@ -82,13 +86,13 @@ export async function activarPush(ruta: string, conAuth = false): Promise<boolea
     const json = suscripcion.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
 
-    const alta = await fetch(`${API_BASE}/${ruta}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: conAuth ? 'include' : 'same-origin',
-      body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }),
-    });
-    return alta.ok;
+    const rutaNormalizada = ruta.startsWith('/') ? ruta : `/${ruta}`;
+    await api.post(
+      rutaNormalizada,
+      { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+      { publicEndpoint: !conAuth },
+    );
+    return true;
   } catch {
     return false;
   }

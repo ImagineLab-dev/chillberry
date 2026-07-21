@@ -220,10 +220,10 @@ $CO ps
 Al arrancar con `NODE_ENV=production`, la API **avisa por consola** cuáles
 quedaron en sandbox. No bloquea: puede ser a propósito.
 
-- **WhatsApp** (`WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`): sin esto no
-  sale **ningún** mensaje — ni la confirmación del pedido, ni el aviso al
-  repartidor, ni la encuesta post-visita. Se loguean en vez de enviarse.
-  Requiere además tener las plantillas aprobadas en Meta.
+- **Avisos push** (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`): sin estas dos claves
+  no sale **ningún** aviso — ni "pedido listo", ni el aviso al repartidor, ni la
+  encuesta post-visita. Se loguean en vez de enviarse. (Reemplazaron a WhatsApp,
+  que se sacó del producto.)
 - **Cobro de suscripciones** (`BILLING_PROVIDER=dlocal` + `DLOCAL_API_KEY` +
   `DLOCAL_SECRET_KEY`): con `mock` no se cobra de verdad. Cambiar
   `DLOCAL_API_BASE` al host de producción **recién** después de probar en el
