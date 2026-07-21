@@ -306,7 +306,7 @@ export class AuthService {
   // ----------------------------------------------------------------- helpers
 
   private async issueTokens(
-    user: { id: string; tenantId: string; email: string; role: string },
+    user: { id: string; tenantId: string; email: string; role: string; branchId?: string | null },
     meta: RequestMeta,
   ): Promise<TokenPair> {
     const payload: JwtAccessPayload = {
@@ -314,6 +314,7 @@ export class AuthService {
       tenantId: user.tenantId,
       email: user.email,
       role: user.role as JwtAccessPayload['role'],
+      branchId: user.branchId ?? null,
     };
     const accessToken = await this.jwt.signAsync(
       { ...payload },

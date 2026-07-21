@@ -9,6 +9,8 @@ import { OpenCashSessionDto } from './dto/open-cash-session.dto';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 import { CreateCashMovementDto } from './dto/cash-movement.dto';
 import { ApplyDiscountDto } from './dto/apply-discount.dto';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { ChargeOrderDto } from './dto/charge-order.dto';
 import { RefundOrderDto } from './dto/refund-order.dto';
 
@@ -93,9 +95,12 @@ export class PosService {
 
   // ------------------------------------------------------------- sesiones
 
-  async openSession(dto: OpenCashSessionDto, cashierId: string) {
+  async openSession(dto: OpenCashSessionDto, cashierId: string, user: AuthenticatedUser) {
     const branch = await this.tenantPrisma.client.branch.findUnique({ where: { id: dto.branchId } });
     if (!branch) throw new NotFoundException('Sucursal no encontrada');
+    // `dto.branchId` lo elige el cliente: sin esto, un cajero abre caja en
+    // cualquier local del restaurante.
+    assertPuedeUsarSucursal(user, branch.id);
 
     const existing = await this.getOpenSession(dto.branchId);
     if (existing) throw new ConflictException('Ya hay una caja abierta para esta sucursal');
@@ -172,12 +177,15 @@ export class PosService {
     }));
   }
 
-  async closeSession(sessionId: string, dto: CloseCashSessionDto) {
+  async closeSession(sessionId: string, dto: CloseCashSessionDto, user: AuthenticatedUser) {
     const session = await this.tenantPrisma.client.cashRegisterSession.findUnique({
       where: { id: sessionId },
       include: { movements: true },
     });
     if (!session) throw new NotFoundException('Sesión de caja no encontrada');
+    // Cerrar una caja ajena falsea el arqueo de ese local Y lo deja cerrado
+    // para siempre: por API no hay forma de reabrirlo.
+    assertPuedeUsarSucursal(user, session.branchId);
     if (session.status === 'CLOSED') throw new ConflictException('Esta caja ya está cerrada');
 
     // Solo movimientos en EFECTIVO afectan lo que debería haber físicamente
@@ -215,9 +223,11 @@ export class PosService {
     return { ...closed, cashTips };
   }
 
-  async createMovement(sessionId: string, dto: CreateCashMovementDto, userId: string) {
+  async createMovement(sessionId: string, dto: CreateCashMovementDto, userId: string, user: AuthenticatedUser) {
     const session = await this.tenantPrisma.client.cashRegisterSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Sesión de caja no encontrada');
+    // Un PAY_OUT contra la caja de otro local es sacar plata de un cajón ajeno.
+    assertPuedeUsarSucursal(user, session.branchId);
     if (session.status !== 'OPEN') throw new ConflictException('Esta caja ya está cerrada');
 
     // Sacar plata del cajón (PAY_OUT) exige motivo: un retiro sin explicación
@@ -442,9 +452,12 @@ export class PosService {
 
   // --------------------------------------------------------------- cobro
 
-  async charge(orderId: string, dto: ChargeOrderDto) {
+  async charge(orderId: string, dto: ChargeOrderDto, user: AuthenticatedUser) {
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // El cobro escribe el SALE contra la caja de `order.branchId`: cobrar un
+    // pedido ajeno mete plata en el cajón de otro local.
+    assertPuedeUsarSucursal(user, order.branchId);
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('Este pedido ya está cerrado');
     }
@@ -564,12 +577,15 @@ export class PosService {
    * REFUNDED. No se puede devolver más de lo cobrado (descontando devoluciones
    * previas). Requiere caja abierta.
    */
-  async refundOrder(orderId: string, dto: RefundOrderDto, userId: string) {
+  async refundOrder(orderId: string, dto: RefundOrderDto, userId: string, user: AuthenticatedUser) {
     const order = await this.tenantPrisma.client.order.findUnique({
       where: { id: orderId },
       include: { payments: true },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // El REFUND sale del cajón de `order.branchId`: sin esto, un cajero
+    // reembolsa contra la caja de otro local.
+    assertPuedeUsarSucursal(user, order.branchId);
     if (order.status !== 'COMPLETED') {
       throw new ConflictException('Solo se puede reembolsar un pedido ya cobrado');
     }

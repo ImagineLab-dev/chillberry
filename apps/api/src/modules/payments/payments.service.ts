@@ -99,8 +99,14 @@ export class PaymentsService {
     const idempotencyKey = args.idempotencyKey ?? randomBytes(16).toString('hex');
 
     if (args.idempotencyKey) {
-      const existing = await db.payment.findUnique({
-        where: { idempotencyKey },
+      // `tenantId` EXPLÍCITO: cuando el cobro es todo en efectivo, `db` es una
+      // transacción del cliente CRUDO (ver pos.service `charge`), que no inyecta
+      // nada. Sin este filtro, una clave que existiera en otro tenant devolvería
+      // su fila `Payment` completa al atacante — y su propio cobro no quedaría
+      // registrado. Hoy no es explotable porque la clave es un UUID que nadie
+      // puede adivinar, pero eso es una defensa por suerte, no por diseño.
+      const existing = await db.payment.findFirst({
+        where: { idempotencyKey, tenantId: this.tenantPrisma.tenantId },
       });
       if (existing) {
         // Replay: el cliente reintentó el mismo cobro. Devolver el original es

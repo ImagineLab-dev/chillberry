@@ -239,6 +239,17 @@ export class BillingService {
       throw new BadRequestException('Ya estás en ese plan');
     }
 
+    // Una suscripción suspendida o cancelada NO se revive desde acá. Antes el
+    // update de abajo escribía `status: 'ACTIVE'` incondicionalmente, así que
+    // el tenant al que el super-admin acababa de suspender por falta de pago se
+    // reactivaba solo con un cambio de plan: la sanción era reversible por el
+    // sancionado. Volver a habilitarlo es decisión del super-admin.
+    if (sub.status === 'SUSPENDED' || sub.status === 'CANCELLED') {
+      throw new ForbiddenException(
+        'Tu suscripción está suspendida. Escribinos a soporte@chillberry.app para reactivarla.',
+      );
+    }
+
     const isUpgrade = Number(plan.priceMonthly) >= Number(sub.plan.priceMonthly);
 
     if (!isUpgrade) {
@@ -259,7 +270,10 @@ export class BillingService {
       data: {
         planId: plan.id,
         pendingPlanId: null,
-        status: 'ACTIVE',
+        // El estado NO se toca. Cambiar de plan no es un pago: promover a
+        // ACTIVE desde acá blanqueaba un PAST_DUE (deuda impaga) como si se
+        // hubiera cobrado. Quien mueve el estado es el webhook de cobro
+        // (`processWebhook`) o el super-admin.
         renewalDate: addDays(new Date(), BILLING_PERIOD_DAYS),
       },
       include: { plan: true },

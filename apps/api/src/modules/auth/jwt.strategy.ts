@@ -22,6 +22,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: payload.tenantId,
       email: payload.email,
       role: payload.role,
+      // `?? null` a propósito: los tokens emitidos ANTES de que existiera el
+      // aislamiento por sucursal no traen el campo. Sin esto llegarían como
+      // `undefined` y cualquier comparación contra una sucursal daría falso
+      // de la manera equivocada.
+      branchId: payload.branchId ?? null,
     };
   }
 }

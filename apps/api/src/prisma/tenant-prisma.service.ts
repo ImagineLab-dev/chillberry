@@ -12,10 +12,15 @@ const WHERE_OPERATIONS = new Set([
   'delete',
   'deleteMany',
   'count',
+  'updateManyAndReturn',
   'aggregate',
   'groupBy',
 ]);
-const DATA_OPERATIONS = new Set(['create', 'createMany']);
+// `createManyAndReturn` y `updateManyAndReturn` existen desde Prisma 5.14 y hoy
+// no los usa nadie en el repo. Van igual: el día que alguien escriba uno sobre
+// un modelo con tenant, esta extensión NO lo interceptaría y la escritura
+// cruzaría tenants sin un solo error. Es una línea contra un fallo silencioso.
+const DATA_OPERATIONS = new Set(['create', 'createMany', 'createManyAndReturn']);
 
 function uncapitalize(model: string): string {
   return model.charAt(0).toLowerCase() + model.slice(1);

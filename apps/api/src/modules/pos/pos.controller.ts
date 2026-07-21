@@ -25,7 +25,7 @@ export class PosController {
 
   @Post('cash-sessions/open')
   openSession(@Body() dto: OpenCashSessionDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.pos.openSession(dto, user.id);
+    return this.pos.openSession(dto, user.id, user);
   }
 
   @Get('cash-sessions/open')
@@ -34,8 +34,12 @@ export class PosController {
   }
 
   @Post('cash-sessions/:id/close')
-  closeSession(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CloseCashSessionDto) {
-    return this.pos.closeSession(id, dto);
+  closeSession(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloseCashSessionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pos.closeSession(id, dto, user);
   }
 
   // Endpoints de plata con throttle estricto propio (30/min): más ajustado que
@@ -48,7 +52,7 @@ export class PosController {
     @Body() dto: CreateCashMovementDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.pos.createMovement(id, dto, user.id);
+    return this.pos.createMovement(id, dto, user.id, user);
   }
 
   @Throttle(strictThrottle(30))
@@ -59,8 +63,12 @@ export class PosController {
 
   @Throttle(strictThrottle(30))
   @Post('orders/:id/charge')
-  charge(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChargeOrderDto) {
-    return this.pos.charge(id, dto);
+  charge(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChargeOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pos.charge(id, dto, user);
   }
 
   // Reembolso total o parcial de un pedido cobrado. Registra la salida de caja
@@ -72,7 +80,7 @@ export class PosController {
     @Body() dto: RefundOrderDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.pos.refundOrder(id, dto, user.id);
+    return this.pos.refundOrder(id, dto, user.id, user);
   }
 
   // Propinas por mozo en un rango — para liquidar el turno. `from`/`to` ISO.

@@ -76,6 +76,18 @@ model User {
   passwordHash        String    @map("password_hash")
   name                String
   role                UserRole
+  /// Sucursal a la que pertenece el empleado. NULL = ve todo el restaurante.
+  ///
+  /// El OWNER (dueño) es siempre NULL: maneja todos los locales. El resto
+  /// —ADMIN (gerente), mozo, cajero, cocina— queda atado a UNA sucursal y no
+  /// puede ver ni operar sobre las demás. Antes esto no existía: cualquier
+  /// empleado podía abrir mesas, cerrar la caja y leer los reportes de
+  /// cualquier local del mismo restaurante.
+  ///
+  /// Es nullable para no romper las cuentas ya creadas; el código trata "sin
+  /// sucursal" como acceso total, así que asignarlas es un paso explícito
+  /// (ver `docs/AISLAMIENTO.md`).
+  branchId            String?   @map("branch_id") @db.Uuid
   active              Boolean   @default(true)
   /// Anti-fuerza-bruta por CUENTA (complementa el rate-limit por IP): cuenta los
   /// logins fallidos consecutivos; al llegar al umbral se bloquea hasta
@@ -86,10 +98,14 @@ model User {
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Restrict y no Cascade: borrar una sucursal no puede llevarse puestos a sus
+  // empleados. Primero se los reasigna.
+  branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: Restrict)
   refreshTokens RefreshToken[]
   driverProfile Driver?
 
   @@index([tenantId, role])
+  @@index([branchId])
   @@map("users")
 }
 
@@ -184,6 +200,8 @@ model Branch {
   ingredients          Ingredient[]
   feedbacks            Feedback[]
   purchaseOrders       PurchaseOrder[]
+  /// Empleados asignados a esta sucursal (ver `User.branchId`).
+  users                User[]
 
   @@index([tenantId])
   @@map("branches")
