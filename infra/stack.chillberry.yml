@@ -34,6 +34,11 @@ services:
       replicas: 1
       restart_policy:
         condition: any
+      resources:
+        # Server COMPARTIDO (n8n/CRM/agencia): un pico o leak de Chillberry no
+        # puede quedarse con toda la RAM y voltear a los vecinos.
+        limits:
+          memory: 1G
 
   redis:
     image: redis:7-alpine
@@ -46,6 +51,9 @@ services:
       replicas: 1
       restart_policy:
         condition: any
+      resources:
+        limits:
+          memory: 512M
 
   # Motor de ruteo propio: dibuja el camino por las calles en el seguimiento.
   #
@@ -105,6 +113,10 @@ services:
       DLOCAL_WEBHOOK_SECRET: ${DLOCAL_WEBHOOK_SECRET}
       BILLING_PROVIDER: ${BILLING_PROVIDER}
       DLOCAL_API_BASE: ${DLOCAL_API_BASE}
+      # Claves de la API de dLocal — necesarias al activar BILLING_PROVIDER=dlocal
+      # (sin ellas el adaptador real recibe undefined y falla en runtime).
+      DLOCAL_API_KEY: ${DLOCAL_API_KEY}
+      DLOCAL_SECRET_KEY: ${DLOCAL_SECRET_KEY}
       DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE}
       LOG_LEVEL: ${LOG_LEVEL}
@@ -127,6 +139,11 @@ services:
       replicas: 1
       restart_policy:
         condition: any
+      resources:
+        # Server compartido: tope para que un leak de la API no vacíe la RAM del
+        # host y afecte al n8n/CRM de los otros clientes.
+        limits:
+          memory: 1G
       update_config:
         order: start-first
 
@@ -140,6 +157,9 @@ services:
       replicas: 1
       restart_policy:
         condition: any
+      resources:
+        limits:
+          memory: 768M
       update_config:
         order: start-first
 

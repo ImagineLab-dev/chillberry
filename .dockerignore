@@ -22,11 +22,18 @@ out/
 .turbo/
 *.tsbuildinfo
 
-# Env (nunca debe viajar en la imagen; se inyecta via env_file/ARG en runtime/build)
+# Env — NUNCA viaja en la imagen (se inyecta via env_file/ARG en runtime/build).
+# Glob RECURSIVO: antes se listaban por nombre exacto y sólo en raíz, así que un
+# `.env.prod`/`.env.staging` olvidado, o `apps/api/.env`, entraba por el `COPY . .`.
+# Se preservan ejemplos y plantillas (no traen secretos).
 .env
-.env.local
-.env.*.local
-.env.production
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!.env*.template
+!**/.env*.template
 
 # Logs
 *.log
