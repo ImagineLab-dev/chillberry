@@ -57,7 +57,10 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
    */
   private webhookUrl(): string {
     const origin = loadEnv().WEB_ORIGIN.split(',')[0]!.trim().replace(/\/+$/, '');
-    return `${origin}/api/webhooks/payments/dlocal`;
+    // Webhook de SUSCRIPCIONES (SAAS_BILLING) → WebhooksBillingController
+    // (`/webhooks/dlocal`). NO el de pagos de pedidos (`/webhooks/payments/:provider`,
+    // scope CUSTOMER_PAYMENT): son endpoints distintos aunque compartan proveedor.
+    return `${origin}/api/webhooks/dlocal`;
   }
 
   async createSubscriptionIntent(
