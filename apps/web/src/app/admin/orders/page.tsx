@@ -1,7 +1,7 @@
 'use client';
 
 import { AyudaSeccion } from '@/components/ayuda-seccion';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Ban, FileText, Plus, ReceiptText, Send, Undo2, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
 import { formatMoney } from '@chillberry/domain';
@@ -111,6 +111,11 @@ export default function OrdersPage() {
 
   const [tableId, setTableId] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [creating, setCreating] = useState(false);
+  // Clave de idempotencia por pedido: un doble-click (o un reintento tras una
+  // respuesta perdida) manda la misma clave y el backend devuelve el pedido ya
+  // creado en vez de duplicar la comanda. Se limpia al crear con éxito.
+  const orderKeyRef = useRef<string | null>(null);
   const [pickItem, setPickItem] = useState('');
   const [pickQty, setPickQty] = useState('1');
   const [pickNotes, setPickNotes] = useState('');
@@ -211,11 +216,15 @@ export default function OrdersPage() {
   }
 
   async function createOrder() {
+    if (creating) return; // guard de doble-submit: no disparar dos pedidos
+    setCreating(true);
     setError(null);
+    if (!orderKeyRef.current) orderKeyRef.current = crypto.randomUUID();
     try {
       await api.post('/orders', {
         branchId,
         tableId: tableId || undefined,
+        idempotencyKey: orderKeyRef.current,
         // Sólo ids de extras, nunca precios: el server resuelve los deltas.
         items: cart.map((l) => ({
           menuItemId: l.menuItemId,
@@ -224,11 +233,14 @@ export default function OrdersPage() {
           modifierOptionIds: l.modifierOptionIds.length > 0 ? l.modifierOptionIds : undefined,
         })),
       });
+      orderKeyRef.current = null; // creado: el próximo pedido lleva clave nueva
       setCart([]);
       setTableId('');
       await loadForBranch(branchId);
     } catch (err) {
       setError((err as ApiError).message);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -498,7 +510,7 @@ export default function OrdersPage() {
           </ul>
         )}
 
-        <button onClick={createOrder} disabled={cart.length === 0} className="btn btn-primary">
+        <button onClick={createOrder} disabled={creating || cart.length === 0} className="btn btn-primary">
           <Send className="h-4 w-4" />
           Enviar pedido
         </button>

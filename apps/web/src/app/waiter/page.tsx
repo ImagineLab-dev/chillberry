@@ -96,6 +96,9 @@ export default function WaiterPage() {
   /** Hay una acción del mozo en vuelo: bloquea el resto para que un toque doble
    *  no mande dos veces lo mismo (dos pedidos, dos rondas, dos uniones). */
   const [busy, setBusy] = useState(false);
+  // Clave de idempotencia por pedido nuevo (se limpia al crear): defensa extra
+  // ante un reintento tras respuesta perdida, además del guard `busy`.
+  const orderKeyRef = useRef<string | null>(null);
 
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelection, setMergeSelection] = useState<string[]>([]);
@@ -202,9 +205,9 @@ export default function WaiterPage() {
    * Corre una acción bloqueando las demás mientras está en vuelo.
    *
    * Sin esto, un toque doble en una tablet lenta mandaba DOS pedidos a la misma
-   * mesa: dos comandas a cocina y el total duplicado. El backend no tiene red de
-   * contención acá — `POST /orders` no acepta clave de idempotencia (sólo la
-   * tiene el cobro), así que la única defensa es no dejar disparar dos veces.
+   * mesa: dos comandas a cocina y el total duplicado. Doble defensa: el guard
+   * `busy` no deja disparar dos veces, y `POST /orders` ahora acepta una clave
+   * de idempotencia que el backend usa para devolver el pedido ya creado.
    */
   async function run(action: () => Promise<void>) {
     if (busy) return;
@@ -244,8 +247,15 @@ export default function WaiterPage() {
 
   async function onCreateOrder() {
     if (!selectedTableId || cart.length === 0) return;
+    if (!orderKeyRef.current) orderKeyRef.current = crypto.randomUUID();
     await run(async () => {
-      await api.post('/orders', { branchId, tableId: selectedTableId, items: cart.map(toOrderItem) });
+      await api.post('/orders', {
+        branchId,
+        tableId: selectedTableId,
+        idempotencyKey: orderKeyRef.current,
+        items: cart.map(toOrderItem),
+      });
+      orderKeyRef.current = null;
       setCart([]);
       await loadTables(branchId);
     });

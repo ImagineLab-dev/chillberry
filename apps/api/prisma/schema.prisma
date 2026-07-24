@@ -721,6 +721,10 @@ model Order {
   customerName    String?     @map("customer_name")
   customerPhone   String?     @map("customer_phone")
   notes           String?
+  /// Clave de idempotencia opcional del cliente para deduplicar la CREACIÓN del
+  /// pedido: dos POST con la misma clave (doble-click en una tablet lenta)
+  /// devuelven el MISMO pedido en vez de duplicar la comanda y la cuenta.
+  idempotencyKey  String?     @unique @map("idempotency_key")
   subtotal        Decimal     @default(0) @db.Decimal(10, 2)
   taxTotal        Decimal     @default(0) @map("tax_total") @db.Decimal(10, 2)
   discountTotal   Decimal     @default(0) @map("discount_total") @db.Decimal(10, 2)
@@ -1308,6 +1312,10 @@ model Delivery {
   deliveryFee       Decimal        @map("delivery_fee") @db.Decimal(10, 2)
   estimatedMinutes  Int?           @map("estimated_minutes")
   confirmationCode  String         @map("confirmation_code") @db.VarChar(6)
+  /// Intentos fallidos de código en `deliver`: tras varios se bloquea, para que
+  /// un repartidor no pueda fuerza-brutear los 6 dígitos y marcar entregado sin
+  /// pasar por el cliente.
+  deliverAttempts   Int            @default(0) @map("deliver_attempts")
   /// Secreto del CLIENTE: es lo que va en su link de seguimiento.
   ///
   /// No se usa el `id` para eso. El repartidor conoce el id de sus entregas y

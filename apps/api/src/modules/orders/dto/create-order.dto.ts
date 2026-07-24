@@ -64,6 +64,14 @@ export class CreateOrderDto {
   @Length(0, 300)
   notes?: string;
 
+  /** Clave de idempotencia opcional: dos envíos con la misma clave (doble-click
+   *  en una tablet lenta) devuelven el MISMO pedido en vez de duplicar la
+   *  comanda y la cuenta. El front genera una por carrito. */
+  @IsOptional()
+  @IsString()
+  @Length(8, 100)
+  idempotencyKey?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

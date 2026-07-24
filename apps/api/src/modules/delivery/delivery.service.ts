@@ -423,12 +423,29 @@ export class DeliveryService {
     if (!canTransitionDelivery(delivery.status as DeliveryStatus, 'DELIVERED')) {
       throw new ConflictException(`No se puede pasar de ${delivery.status} a DELIVERED`);
     }
+    // Anti fuerza-bruta del código (6 dígitos): tras varios intentos fallidos se
+    // bloquea, para que un repartidor no lo adivine y marque entregado sin pasar
+    // por el cliente. El throttle por IP ayuda pero se sortea rotando IP.
+    const MAX_INTENTOS = 5;
+    if (delivery.deliverAttempts >= MAX_INTENTOS) {
+      throw new ForbiddenException(
+        'Demasiados intentos con código incorrecto — contactá al restaurante para cerrar la entrega.',
+      );
+    }
     if (delivery.confirmationCode !== dto.confirmationCode) {
+      await this.tenantPrisma.client.delivery.update({
+        where: { id: deliveryId },
+        data: { deliverAttempts: { increment: 1 } },
+      });
       throw new BadRequestException('Código de confirmación incorrecto');
     }
 
-    const updated = await this.tenantPrisma.client.delivery.update({
-      where: { id: deliveryId },
+    // Compare-and-set: la transición a DELIVERED va condicionada al estado leído.
+    // Sólo el que gana la carrera mueve los contadores del repartidor — sin esto,
+    // dos `deliver` a la vez decrementaban `activeDeliveriesCount` dos veces (podía
+    // quedar negativo → el repartidor salía siempre como "menos cargado").
+    const cerrada = await this.tenantPrisma.client.delivery.updateMany({
+      where: { id: deliveryId, status: delivery.status },
       data: {
         status: 'DELIVERED',
         deliveredAt: new Date(),
@@ -436,6 +453,9 @@ export class DeliveryService {
         proofSignatureUrl: dto.proofSignatureUrl,
       },
     });
+    if (cerrada.count === 0) {
+      throw new ConflictException('La entrega ya cambió de estado — recargá y volvé a intentar');
+    }
     await this.tenantPrisma.client.driver.update({
       where: { id: driver.id },
       data: { activeDeliveriesCount: { decrement: 1 }, totalDeliveries: { increment: 1 } },
@@ -443,7 +463,7 @@ export class DeliveryService {
     await this.logEvent(deliveryId, 'DELIVERY_COMPLETED', {});
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: 'DELIVERED' });
     await this.notifications.notifyDeliveryCompleted(delivery.tenantId, delivery.order.customerPhone);
-    return stripConfirmationCode(updated);
+    return stripConfirmationCode(await this.getOrThrow(deliveryId));
   }
 
   /**

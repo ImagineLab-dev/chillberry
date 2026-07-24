@@ -35,6 +35,18 @@ export class OrdersService {
     // dueño y las cuentas sin sucursal siguen pudiendo operar en cualquier local.
     assertPuedeUsarSucursal(actor, dto.branchId);
 
+    // Idempotencia: si el cliente manda una clave y ya existe un pedido con ella
+    // (doble-submit por una tablet lenta), devolvemos ESE en vez de duplicar la
+    // comanda y la cuenta. Esto atrapa el caso común (reintento secuencial); el
+    // índice único es el respaldo ante la carrera real (ver el catch del create).
+    if (dto.idempotencyKey) {
+      const existente = await this.tenantPrisma.client.order.findFirst({
+        where: { idempotencyKey: dto.idempotencyKey },
+        include: { items: { include: { menuItem: true } } },
+      });
+      if (existente) return existente;
+    }
+
     if (dto.tableId) {
       const table = await this.tenantPrisma.client.table.findUnique({ where: { id: dto.tableId } });
       if (!table) throw new NotFoundException('Mesa no encontrada');
@@ -67,28 +79,50 @@ export class OrdersService {
       false,
     );
 
-    const order = await this.tenantPrisma.client.order.create({
-      data: {
-        tenantId: this.tenantPrisma.tenantId,
-        branchId: dto.branchId,
-        tableId: dto.tableId,
-        waiterId,
-        type: orderType,
-        customerName: dto.customerName,
-        customerPhone: dto.customerPhone,
-        notes: dto.notes,
-        subtotal,
-        total: subtotal,
-        items: { create: itemsData },
-      },
-      include: { items: { include: { menuItem: true } } },
-    });
+    // El create puede chocar con el índice único de `idempotencyKey` en una
+    // carrera de doble-submit REAL (dos POST idénticos a la vez): el segundo
+    // recibe P2002 y devolvemos el pedido que ganó, SIN re-generar comandas.
+    const resultado = await this.tenantPrisma.client.order
+      .create({
+        data: {
+          tenantId: this.tenantPrisma.tenantId,
+          branchId: dto.branchId,
+          tableId: dto.tableId,
+          waiterId,
+          type: orderType,
+          customerName: dto.customerName,
+          customerPhone: dto.customerPhone,
+          notes: dto.notes,
+          idempotencyKey: dto.idempotencyKey,
+          subtotal,
+          total: subtotal,
+          items: { create: itemsData },
+        },
+        include: { items: { include: { menuItem: true } } },
+      })
+      .then((o) => ({ order: o, nuevo: true }))
+      .catch(async (e: { code?: string }) => {
+        if (dto.idempotencyKey && e.code === 'P2002') {
+          const ganador = await this.tenantPrisma.client.order.findFirst({
+            where: { idempotencyKey: dto.idempotencyKey },
+            include: { items: { include: { menuItem: true } } },
+          });
+          if (ganador) return { order: ganador, nuevo: false };
+        }
+        throw e;
+      });
 
-    // Genera una KitchenTask por estación (KDS) — el pedido queda en WAITING
-    // hasta que cocina toma la primera tarea (ver KitchenService.aggregateOrderStatus).
-    await this.kitchen.generateTasksForOrder(order.id, order.branchId, order.items);
+    // Sólo el pedido RECIÉN creado genera sus KitchenTasks (KDS). El que vuelve
+    // por idempotencia ya las tiene — re-generarlas duplicaría la comanda.
+    if (resultado.nuevo) {
+      await this.kitchen.generateTasksForOrder(
+        resultado.order.id,
+        resultado.order.branchId,
+        resultado.order.items,
+      );
+    }
 
-    return order;
+    return resultado.order;
   }
 
   /**
