@@ -39,12 +39,38 @@ http:
             sans:
               - "www.chillberry.app"
 
+    # --- Storefronts por SUBDOMINIO (tunombre.chillberry.app) ---
+    # Cualquier <sub>.chillberry.app va al front, que reescribe a /s/<sub>
+    # (ver middleware.ts → tenantSubdomain). Prioridad BAJA (5): el apex, www y
+    # /api ganan por su prioridad mayor, así que este router sólo agarra los
+    # subdominios de tenant.
+    #
+    # El cert es el WILDCARD *.chillberry.app emitido por lego vía DNS-01 de
+    # Hostinger (ver /etc/easypanel/traefik/wildcard-certs/), servido por SNI
+    # desde el store `tls.certificates` de abajo. NO usa certResolver porque el
+    # challenge HTTP-01 de letsencrypt NO puede emitir wildcards — sólo DNS-01.
+    https-chillberry-web-wildcard:
+      rule: "HostRegexp(`^[a-z0-9-]+\\.chillberry\\.app$`)"
+      entryPoints: [https]
+      service: chillberry-web
+      priority: 5
+      tls: {}
+
     # --- Puerto 80: sólo redirección. El dominio es .app (HSTS preload), así
     #     que los navegadores ni siquiera intentan HTTP.
     http-chillberry:
       rule: "Host(`chillberry.app`) || Host(`www.chillberry.app`)"
       entryPoints: [http]
       service: chillberry-web
+      middlewares:
+        - redirect-to-https
+
+    # --- Puerto 80 de los subdominios: misma redirección a https.
+    http-chillberry-wildcard:
+      rule: "HostRegexp(`^[a-z0-9-]+\\.chillberry\\.app$`)"
+      entryPoints: [http]
+      service: chillberry-web
+      priority: 5
       middlewares:
         - redirect-to-https
 
@@ -57,3 +83,13 @@ http:
       loadBalancer:
         servers:
           - url: "http://chillberry-web:3000/"
+
+# Cert WILDCARD *.chillberry.app (lego / DNS-01 de Hostinger). Traefik lo sirve
+# por SNI a cualquier subdominio de tenant. Renovación: cron mensual que re-corre
+# lego y toca este archivo para que Traefik recargue (ver /opt/chillberry/infra/
+# scripts/renew-wildcard.sh). Rutas dentro del contenedor Traefik (/data =
+# /etc/easypanel/traefik).
+tls:
+  certificates:
+    - certFile: /data/wildcard-certs/certificates/_.chillberry.app.crt
+      keyFile: /data/wildcard-certs/certificates/_.chillberry.app.key

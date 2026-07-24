@@ -7,21 +7,27 @@
 # reciente adentro, y corre un smoke query. Si algo del dump está roto, se
 # entera acá —en CI, un martes cualquiera— y no el día del incidente.
 #
+# FORMATOS: el backup real de producción (/opt/chillberry/backup.sh) genera
+# `chillberry-*.dump` (pg_dump -Fc, formato custom comprimido → pg_restore).
+# Se acepta también el `.sql.gz` legacy por si queda alguno viejo dando
+# vueltas. Antes este script SOLO entendía el legacy: la prueba "pasaba" en CI
+# sin haber probado jamás el formato que produce el backup real.
+#
 # Pensado para correr en CI (ver .github/workflows/ci.yml, job restore-test) o
 # a mano en cualquier host con Docker. NO toca la base de producción: todo pasa
 # en un contenedor descartable que se borra al final.
 #
 # Uso:
-#   ./restore-test.sh [ruta-al-backup.sql.gz]
-#   (sin argumento, toma el .sql.gz más reciente de BACKUP_DIR)
+#   ./restore-test.sh [ruta-al-backup(.dump|.sql.gz)]
+#   (sin argumento, toma el backup más reciente de BACKUP_DIR)
 #
 # Env:
-#   BACKUP_DIR   Dónde buscar el backup si no se pasa ruta. Default: /var/backups/chillberry
+#   BACKUP_DIR   Dónde buscar el backup si no se pasa ruta. Default: /opt/chillberry/backups
 #   PG_IMAGE     Imagen de Postgres para la prueba. Default: postgres:16-alpine
 
 set -euo pipefail
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/chillberry}"
+BACKUP_DIR="${BACKUP_DIR:-/opt/chillberry/backups}"
 PG_IMAGE="${PG_IMAGE:-postgres:16-alpine}"
 CONTAINER="chillberry-restore-test-$$"
 DB="chillberry"
@@ -30,7 +36,7 @@ PASSWORD="restore-test-throwaway"
 
 BACKUP_FILE="${1:-}"
 if [ -z "$BACKUP_FILE" ]; then
-  BACKUP_FILE="$(find "$BACKUP_DIR" -maxdepth 1 -name 'chillberry-backup-*.sql.gz' -type f | sort | tail -n1)"
+  BACKUP_FILE="$(find "$BACKUP_DIR" -maxdepth 1 \( -name 'chillberry-*.dump' -o -name 'chillberry-backup-*.sql.gz' \) -type f | sort | tail -n1)"
 fi
 if [ -z "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
   echo "[restore-test] ERROR: no encontré un backup para probar (buscado en '${BACKUP_DIR}')." >&2
@@ -42,12 +48,6 @@ echo "[restore-test] $(date -Iseconds) Probando restore de: ${BACKUP_FILE}"
 # El contenedor efímero se borra pase lo que pase (éxito, fallo, Ctrl-C).
 cleanup() { docker rm -f "$CONTAINER" > /dev/null 2>&1 || true; }
 trap cleanup EXIT
-
-# Antes que nada: el gzip tiene que estar íntegro.
-if ! gzip -t "$BACKUP_FILE"; then
-  echo "[restore-test] ERROR: ${BACKUP_FILE} no pasa 'gzip -t' — archivo corrupto." >&2
-  exit 1
-fi
 
 echo "[restore-test] Levantando Postgres efímero (${PG_IMAGE})..."
 docker run -d --name "$CONTAINER" \
@@ -62,11 +62,35 @@ for i in $(seq 1 30); do
 done
 
 echo "[restore-test] Restaurando el dump..."
-# ON_ERROR_STOP=1: si CUALQUIER sentencia del dump falla, psql sale != 0 y el
-# script se cae. Sin esto, un dump a medias "restauraría" con errores y
-# reportaría éxito — el peor resultado posible en una prueba de backup.
-gunzip -c "$BACKUP_FILE" | docker exec -i \
-  -e ON_ERROR_STOP=1 "$CONTAINER" psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB" > /dev/null
+case "$BACKUP_FILE" in
+  *.dump)
+    # Integridad primero: `pg_restore --list` lee el TOC entero y falla si el
+    # archivo está truncado — mismo chequeo que hace backup.sh antes de rotar.
+    if ! docker exec -i "$CONTAINER" pg_restore --list < "$BACKUP_FILE" > /dev/null; then
+      echo "[restore-test] ERROR: ${BACKUP_FILE} no pasa 'pg_restore --list' — archivo corrupto." >&2
+      exit 1
+    fi
+    # `--clean --if-exists` para que sirva igual sobre base con datos;
+    # `--no-owner` evita fallos por roles que no existen en el efímero.
+    docker exec -i "$CONTAINER" pg_restore --clean --if-exists --no-owner \
+      -U "$USER" -d "$DB" < "$BACKUP_FILE" > /dev/null
+    ;;
+  *.sql.gz)
+    # Formato legacy (psql plano). ON_ERROR_STOP=1: si CUALQUIER sentencia
+    # falla, psql sale != 0 — sin esto un dump a medias "restauraría" con
+    # errores y reportaría éxito, el peor resultado posible en esta prueba.
+    if ! gzip -t "$BACKUP_FILE"; then
+      echo "[restore-test] ERROR: ${BACKUP_FILE} no pasa 'gzip -t' — archivo corrupto." >&2
+      exit 1
+    fi
+    gunzip -c "$BACKUP_FILE" | docker exec -i "$CONTAINER" \
+      psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB" > /dev/null
+    ;;
+  *)
+    echo "[restore-test] ERROR: formato no reconocido: ${BACKUP_FILE} (se espera .dump o .sql.gz)" >&2
+    exit 1
+    ;;
+esac
 
 echo "[restore-test] Smoke query: ¿las tablas core tienen estructura restaurable?"
 # No verifica cantidad de filas (un backup válido puede ser de una base casi

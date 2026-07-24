@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
-# restore.sh — Restores a chillberry-backup-*.sql.gz file (produced by
-# backup.sh) into the running Postgres container.
+# restore.sh — Restaura un backup en el Postgres que esta corriendo.
+#
+# FORMATOS:
+#   chillberry-*.dump          (REAL: pg_dump -Fc de /opt/chillberry/backup.sh)
+#   chillberry-backup-*.sql.gz (legacy: gunzip | psql)
 #
 # ============================================================================
 # !!! DANGER !!!
@@ -27,25 +30,25 @@
 # `docker exec -i` against the running Postgres container.
 #
 # Usage:
-#   ./restore.sh <path-to-backup.sql.gz> [container-name]
+#   ./restore.sh <path-al-backup(.dump|.sql.gz)> [container-name]
 #
 # Env vars:
-#   POSTGRES_CONTAINER  Name of the running Postgres container.
-#                       Default: chillberry-postgres-prod
-#                       (Same caveat as backup.sh: confirm this matches
-#                       infra/docker-compose.prod.yml's container_name once
-#                       that file is finalized.)
+#   POSTGRES_CONTAINER  Contenedor de Postgres. Default: se resuelve solo
+#                       contra el swarm (docker ps -qf name=chillberry_postgres),
+#                       que es como corre produccion hoy.
 
 set -euo pipefail
 
 if [ "${1:-}" = "" ]; then
-  echo "Usage: $0 <path-to-backup.sql.gz> [container-name]" >&2
-  echo "  e.g.: $0 /var/backups/chillberry/chillberry-backup-20260717-030001.sql.gz" >&2
+  echo "Usage: $0 <path-al-backup(.dump|.sql.gz)> [container-name]" >&2
+  echo "  e.g.: $0 /opt/chillberry/backups/chillberry-20260722-0330.dump" >&2
   exit 1
 fi
 
 BACKUP_FILE="$1"
-POSTGRES_CONTAINER="${2:-${POSTGRES_CONTAINER:-chillberry-postgres-prod}}"
+# Default: el contenedor real del stack swarm (task name con sufijo aleatorio).
+DEFAULT_PG="$(docker ps --format '{{.Names}}' -f name=chillberry_postgres | head -1 || true)"
+POSTGRES_CONTAINER="${2:-${POSTGRES_CONTAINER:-${DEFAULT_PG:-chillberry-postgres-prod}}}"
 POSTGRES_DB="chillberry"
 POSTGRES_USER="chillberry"
 
@@ -85,6 +88,34 @@ echo "[restore.sh] $(date -Iseconds) Confirmado. Restaurando ${BACKUP_FILE} en '
 # Un-gzip to a temp file first and check gunzip's own exit status directly
 # via `$?`, then feed that plain file into psql as a fully separate step
 # and check *its* exit status directly too.
+case "$BACKUP_FILE" in
+  *.dump)
+    # Formato REAL (-Fc). Integridad primero (pg_restore --list lee el TOC
+    # entero), despues el restore con --clean --if-exists: sirve sobre base
+    # con datos (las reemplaza) o fresca (los DROP son no-op).
+    set +e
+    docker exec -i "$POSTGRES_CONTAINER" pg_restore --list < "$BACKUP_FILE" > /dev/null
+    LIST_EXIT=$?
+    set -e
+    if [ "$LIST_EXIT" -ne 0 ]; then
+      echo "[restore.sh] ERROR: el dump no pasa 'pg_restore --list' — archivo corrupto." >&2
+      exit 1
+    fi
+    set +e
+    docker exec -i "$POSTGRES_CONTAINER" pg_restore --clean --if-exists --no-owner \
+      -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$BACKUP_FILE"
+    RESTORE_EXIT=$?
+    set -e
+    if [ "$RESTORE_EXIT" -ne 0 ]; then
+      echo "[restore.sh] ERROR: pg_restore fallo (exit ${RESTORE_EXIT})." >&2
+      exit 1
+    fi
+    echo "[restore.sh] $(date -Iseconds) Restore finished. Verify the app (e.g. infra/scripts/smoke-test.sh) before considering this done."
+    exit 0
+    ;;
+esac
+
+# ---- Rama LEGACY (.sql.gz): gunzip a archivo temporal + psql ----------------
 TMP_SQL_FILE="$(mktemp)"
 trap 'rm -f "$TMP_SQL_FILE"' EXIT
 

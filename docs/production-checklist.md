@@ -22,7 +22,7 @@ Chillberry es un SaaS multi-tenant para restaurantes (menú QR, pedidos, cocina/
 
 ### Base de datos
 
-- [ ] Backups automatizados configurados y probados end-to-end con `infra/scripts/backup.sh` (dump programado) y `infra/scripts/restore.sh` (restore verificado contra una base de prueba, no solo `--dry-run`).
+- [ ] Backups automatizados configurados y probados end-to-end con `infra/backup.sh` (el script real desplegado como /opt/chillberry/backup.sh, cron diario 03:30) y `infra/scripts/restore.sh` (formato -Fc via pg_restore; probado en CI por restore-test.sh).
 - [ ] Retención de backups definida (cuántos días/copias) y almacenamiento fuera del mismo host de Postgres.
 - [ ] Migraciones de Prisma aplicadas y verificadas en el entorno de producción (`prisma migrate deploy`, no `migrate dev`).
 - [ ] Índices de `tenantId` presentes en las tablas de mayor volumen (`Order`, `Payment`, `DriverLocation`, etc. — ya declarados en `schema.prisma`) confirmados en el plan de queries reales antes de ir a producción con datos de volumen.

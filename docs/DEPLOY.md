@@ -245,7 +245,7 @@ quedaron en sandbox. No bloquea: puede ser a propósito.
 ```bash
 pnpm typecheck && pnpm lint && pnpm build     # los tres tienen que pasar
 
-# Suite e2e (101 tests) contra una API levantada. Los DOS flags son obligatorios
+# Suite e2e completa (`pnpm --filter @chillberry/api test:e2e` — el número crece con cada fase, no lo hardcodeemos acá) contra una API levantada. Los DOS flags son obligatorios
 # y van declarados en turbo.json > globalEnv — si no, turbo los filtra y nunca
 # llegan al proceso de la API:
 #   DISABLE_THROTTLE: la suite se loguea decenas de veces por minuto y el

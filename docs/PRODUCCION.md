@@ -28,7 +28,9 @@ internet
 traefik  ─── /etc/easypanel/traefik/config/chillberry.yaml
    │
    ├── Host(chillberry.app) && PathPrefix(/api | /socket.io)  → chillberry-api:3001
-   └── Host(chillberry.app) || Host(www.chillberry.app)       → chillberry-web:3000
+   ├── Host(chillberry.app) || Host(www.chillberry.app)       → chillberry-web:3000
+   └── HostRegexp(*.chillberry.app)  [prioridad baja]         → chillberry-web:3000
+       (storefront por subdominio; cert WILDCARD via lego DNS-01 — ver abajo)
 
 stack `chillberry` (Docker Swarm)
    ├── web       red: easypanel            alias chillberry-web
@@ -139,9 +141,16 @@ Archivos que definen todo esto, versionados en el repo:
 | `infra/traefik-chillberry.yaml` | enrutado (copiado a `/etc/easypanel/traefik/config/chillberry.yaml`) |
 | `/opt/chillberry/.env.prod` | secretos — **sólo en el servidor**, permisos 600 |
 
-**El certificado se emite y se renueva solo** (`certResolver: letsencrypt` en
-Traefik). No hay certbot ni renovación manual. El actual vence el 19/10/2026 y
-se renueva sin intervención.
+**Los certificados se emiten y se renuevan solos.** Hay DOS:
+
+- **Apex + www**: `certResolver: letsencrypt` de Traefik (HTTP-01). Cero manejo.
+- **Wildcard `*.chillberry.app`** (subdominios de tenant): HTTP-01 no puede
+  emitir wildcards, así que lo emite `lego` vía DNS-01 contra la API de
+  Hostinger. Vive en `/etc/easypanel/traefik/wildcard-certs/` y Traefik lo
+  sirve por SNI (`tls.certificates` en el yaml). Lo renueva el cron de
+  `infra/scripts/renew-wildcard.sh` (lun/jue 03:30, log en
+  `/var/log/chillberry-cert-renew.log`); el token DNS está en
+  `/opt/chillberry/infra/.hostinger-dns.env` (600).
 
 ## Actualizar a una versión nueva
 
@@ -152,13 +161,18 @@ git pull origin main
 
 # Reconstruir SÓLO lo que cambió. Subí el tag en cada release: Swarm no
 # redespliega si el tag no cambia, y con :latest no sabés qué está corriendo.
-docker build -f infra/Dockerfile.api -t chillberry-api:4 .
+#
+# <N> = el tag ACTUAL + 1. NO copies un número de este doc: mirá qué está
+# corriendo con `docker service ls | grep chillberry` (o el tag en
+# infra/stack.chillberry.yml) y sumale uno. Poner un tag viejo acá y
+# redesplegar PISA producción con una imagen vieja sin ningún aviso.
+docker build -f infra/Dockerfile.api -t chillberry-api:<N> .
 docker build -f infra/Dockerfile.web \
   --build-arg NEXT_PUBLIC_API_BASE_URL=https://chillberry.app/api \
   --build-arg NEXT_PUBLIC_SOCKET_URL=https://chillberry.app \
   --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAD6fygJTcsItdJGl \
   --build-arg NEXT_PUBLIC_ROOT_DOMAIN=chillberry.app \
-  -t chillberry-web:2 .
+  -t chillberry-web:<N> .
 
 # Actualizar los tags en infra/stack.chillberry.yml y redesplegar
 set -a; . ./.env.prod; set +a
@@ -243,6 +257,8 @@ mucho 15 minutos después.
   **nunca salió un request real contra dLocal, ni siquiera en su sandbox**.
   Para activarlo: `BILLING_PROVIDER=dlocal`, las dos claves, y recién cuando
   esté probado en sandbox, mover `DLOCAL_API_BASE` al host de producción.
+> **RESUELTO (21/07/2026):** el link de tracking ahora usa `trackingToken` propio (migración `20260721170000_delivery_tracking_token`; ver `tracking.controller.ts`) y el token se redacta de las respuestas de staff/driver. Lo de abajo queda como registro histórico.
+
 - **El repartidor puede auto-calificarse 5/5.** El link de seguimiento usa la
   clave del pedido, que él conoce: marca entregado y califica antes que el
   cliente. Eso le sube el promedio con el que el sistema reparte pedidos y

@@ -19,4 +19,4 @@ pnpm dev                      # levanta api (puerto 3001) + web (puerto 3000)
 ## Estado
 
 - **Fase 0 — Fundación**: Tenant, Auth (JWT access+refresh), Users, Restaurants, Branches, Tables (QR), Menú mínimo, Orders mínimo. ✅
-- Fases 1-8 (KDS, Meseros, Caja, Pagos, Delivery, SaaS Billing, Integraciones, DevOps): ver plan en `docs/plan-fases-8-10.md`.
+- Fases 1-8 (KDS, Meseros, Caja, Pagos, Delivery, SaaS Billing, Integraciones, DevOps): ver plan en `docs/PRODUCCION.md`.

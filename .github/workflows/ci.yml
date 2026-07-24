@@ -197,9 +197,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Levanta un Postgres "origen", aplica las migraciones para tener el
-      # schema real, y genera un dump con el MISMO formato que backup.sh
-      # (--clean --if-exists + gzip). Después restore-test.sh levanta su propio
-      # Postgres efímero y prueba restaurarlo ahí.
+      # schema real, y genera un dump con el MISMO formato que el backup real
+      # de produccion (pg_dump -Fc). Despues restore-test.sh levanta su propio
+      # Postgres efimero y prueba restaurarlo ahi con pg_restore.
       - name: Provision source DB and produce a backup
         run: |
           set -euo pipefail
@@ -212,8 +212,11 @@ jobs:
           export DATABASE_URL='postgresql://chillberry:chillberry@localhost:5433/chillberry?schema=public'
           pnpm --filter @chillberry/api exec prisma migrate deploy
           mkdir -p /tmp/backups
-          docker exec src-pg pg_dump --clean --if-exists -U chillberry chillberry > /tmp/backups/chillberry-backup-citest.sql
-          gzip -f /tmp/backups/chillberry-backup-citest.sql
+          # MISMO formato que el backup real de produccion (/opt/chillberry/
+          # backup.sh): pg_dump -Fc (custom, comprimido). Antes se generaba un
+          # .sql.gz que ningun backup real produce — el test "pasaba" sin
+          # probar jamas el formato que hay que restaurar en un incidente.
+          docker exec src-pg pg_dump -Fc -U chillberry chillberry > /tmp/backups/chillberry-citest.dump
 
       - name: Restore the backup into an ephemeral DB and smoke-check
         run: BACKUP_DIR=/tmp/backups bash infra/scripts/restore-test.sh
