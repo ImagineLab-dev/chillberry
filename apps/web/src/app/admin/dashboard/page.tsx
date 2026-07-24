@@ -184,7 +184,7 @@ export default function DashboardPage() {
           {/* Alertas operativas — sólo aparece si hay algo que requiere acción.
               Cada fila linkea a la pantalla donde se resuelve. */}
           {hasAlerts && alerts && (
-            <div className="card mb-6 border-l-4 border-warn p-5">
+            <div className="card mb-6 border-warn/40 bg-warn/5 p-5">
               <div className="mb-3 flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 shrink-0 text-warn-foreground" aria-hidden="true" />
                 <h2 className="font-heading text-base font-semibold">Requiere tu atención</h2>

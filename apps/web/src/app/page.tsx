@@ -21,7 +21,7 @@ import { DemoShowcase } from '@/components/landing/demo-showcase';
 import { CommissionCalculator } from '@/components/landing/commission-calculator';
 
 export const metadata: Metadata = {
-  title: 'Chillberry — El sistema completo para tu restaurante',
+  title: 'Chillberry: el sistema completo para tu restaurante',
   description:
     'Pedidos, cocina, caja, delivery y carta con QR en un solo lugar. Probalo gratis: sin instalar nada, funciona desde cualquier teléfono o tablet.',
 };
@@ -65,7 +65,7 @@ const FEATURES = [
 // producto realmente hace hoy.
 const BEFORE = [
   'La comanda va en papel y se pierde entre el salón y la cocina',
-  '"¿Esta mesa ya pagó?" — y hay que preguntarle a tres personas',
+  '"¿Esta mesa ya pagó?" Hay que preguntarle a tres personas',
   'Los pedidos entran por WhatsApp y alguien los copia a mano',
   'La caja no cuadra y no sabés en qué momento se descuadró',
   'Te enterás de que no hay stock cuando el plato ya se vendió',
@@ -217,7 +217,7 @@ export default function LandingPage() {
       {/* --------------------------------------------------------- hero */}
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-14 text-center sm:pt-20">
         <span className="badge badge-primary mb-5">Para restaurantes, cafés y food trucks</span>
-        <h1 className="mx-auto max-w-3xl font-heading text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+        <h1 className="mx-auto max-w-3xl text-balance font-heading text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
           {/* `block` para que la frase destacada arranque siempre en su propia
               línea. Si se deja fluir, el quiebre cae donde entre y el "en"
               queda huérfano al final del primer renglón. */}
@@ -257,7 +257,7 @@ export default function LandingPage() {
       <section className="border-t border-border bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-16">
           <div className="mb-10 text-center">
-            <h2 className="font-heading text-3xl font-bold tracking-tight">Un sábado a las nueve de la noche</h2>
+            <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Un sábado a las nueve de la noche</h2>
             <p className="mt-3 text-base text-muted-foreground">
               El problema no es que falte software. Es que el salón, la cocina y la caja no se hablan.
             </p>
@@ -294,9 +294,9 @@ export default function LandingPage() {
       {/* --------------------------------------------------------- demo */}
       <section id="demo" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12">
         <div className="mb-6 text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight">Mirá cómo lo ve cada uno</h2>
+          <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Mirá cómo lo ve cada uno</h2>
           <p className="mt-3 text-base text-muted-foreground">
-            Cada persona de tu equipo ve solo lo que necesita — y tu cliente también.
+            Cada persona de tu equipo ve solo lo que necesita, y tu cliente también.
           </p>
         </div>
         <DemoShowcase />
@@ -306,7 +306,7 @@ export default function LandingPage() {
       <section className="border-t border-border bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-16">
           <div className="mb-10 text-center">
-            <h2 className="font-heading text-3xl font-bold tracking-tight">Lo que resuelve, en concreto</h2>
+            <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Lo que resuelve, en concreto</h2>
             <p className="mt-3 text-base text-muted-foreground">
               No es un software más: es el día a día de tu local, ordenado.
             </p>
@@ -328,11 +328,11 @@ export default function LandingPage() {
       {/* --------------------------------------------- costo de no cambiar */}
       <section className="mx-auto max-w-6xl px-4 py-16">
         <div className="mb-8 text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight">
+          <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">
             ¿Cuánto te cuesta vender por las apps?
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-base text-muted-foreground">
-            Poné tus números. La cuenta la hacés vos — nosotros no cobramos comisión por venta, ni una sola vez.
+            Poné tus números. La cuenta la hacés vos: nosotros no cobramos comisión por venta, ni una sola vez.
           </p>
         </div>
         <CommissionCalculator planMonthlyUsd={PLANS.find((p) => p.highlighted)?.price ?? PLANS[0]!.price} />
@@ -342,7 +342,7 @@ export default function LandingPage() {
       <section className="border-t border-border bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-16">
           <div className="mb-10 text-center">
-            <h2 className="font-heading text-3xl font-bold tracking-tight">Estás andando en una tarde</h2>
+            <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Estás andando en una tarde</h2>
             <p className="mt-3 text-base text-muted-foreground">
               Sin técnico, sin cableado y sin cerrar el local un día para migrar.
             </p>
@@ -367,7 +367,7 @@ export default function LandingPage() {
       {/* ------------------------------------------------------- precios */}
       <section id="precios" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-16">
         <div className="mb-10 text-center">
-          <h2 className="font-heading text-3xl font-bold tracking-tight">Precios claros, sin comisión por venta</h2>
+          <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Precios claros, sin comisión por venta</h2>
           <p className="mt-3 text-base text-muted-foreground">
             Todos los planes incluyen el producto completo. Lo único que cambia es cuántas sucursales y usuarios.
           </p>
@@ -417,7 +417,7 @@ export default function LandingPage() {
       <section id="faq" className="border-t border-border bg-muted/30">
         <div className="mx-auto max-w-3xl scroll-mt-20 px-4 py-16">
           <div className="mb-8 text-center">
-            <h2 className="font-heading text-3xl font-bold tracking-tight">Lo que todos preguntan</h2>
+            <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Lo que todos preguntan</h2>
           </div>
           {/* <details> nativo: accesible por teclado y funciona aunque el JS no
               cargue — en una landing eso importa más que la animación. */}
@@ -444,7 +444,7 @@ export default function LandingPage() {
       <section className="border-t border-border">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center">
           <Star className="mx-auto mb-4 h-8 w-8 text-primary" />
-          <h2 className="font-heading text-3xl font-bold tracking-tight">Probalo con tu propia carta</h2>
+          <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Probalo con tu propia carta</h2>
           <p className="mt-3 text-base text-muted-foreground">
             Creá tu cuenta, cargá tus productos y en una tarde tenés el QR de tus mesas funcionando.
           </p>

@@ -74,3 +74,25 @@ export const DELIVERY_STATUS_TONE: Record<string, Tone> = {
   RESTAURANT_CANCELLED: 'error',
   FAILED: 'error',
 };
+
+// --------------------------------------------------------------------- roles
+
+/** Roles del personal, como los ve el dueño en Equipo. El enum crudo en inglés
+ *  ("WAITER") no le dice nada a un gastronómico. */
+export const ROLE_LABEL: Record<string, string> = {
+  OWNER: 'Dueño',
+  ADMIN: 'Gerente',
+  WAITER: 'Mozo',
+  KITCHEN: 'Cocina',
+  CASHIER: 'Caja',
+  DRIVER: 'Repartidor',
+  SUPER_ADMIN: 'Super admin',
+};
+
+// --------------------------------------------- facturas de la suscripción
+
+export const INVOICE_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pendiente',
+  PAID: 'Pagada',
+  FAILED: 'Falló',
+};

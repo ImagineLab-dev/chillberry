@@ -103,7 +103,7 @@ const config: Config = {
           to: { opacity: '1' },
         },
         'slide-up': {
-          from: { opacity: '0', transform: 'translateY(4px)' },
+          from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         'scale-in': {
@@ -114,10 +114,17 @@ const config: Config = {
           '100%': { transform: 'translateX(100%)' },
         },
       },
+      // Curva de salida ("ease-out exponencial"): arranca rápido y asienta con
+      // suavidad, la firma del movimiento premium (Apple/Vaul/Sonner). Ya vivía
+      // en la demo del landing; se promueve a token y se usa en TODO el motion
+      // del sistema para que una sola curva mande — coherencia sobre ruido.
+      transitionTimingFunction: {
+        clay: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
       animation: {
-        'fade-in': 'fade-in 150ms ease-out',
-        'slide-up': 'slide-up 200ms ease-out',
-        'scale-in': 'scale-in 150ms ease-out',
+        'fade-in': 'fade-in 150ms cubic-bezier(0.22, 1, 0.36, 1)',
+        'slide-up': 'slide-up 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+        'scale-in': 'scale-in 180ms cubic-bezier(0.22, 1, 0.36, 1)',
       },
     },
   },

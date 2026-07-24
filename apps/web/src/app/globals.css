@@ -62,6 +62,11 @@
     --primary-foreground: 0 0% 100%; /* 7.28:1 sobre primary */
     --ring: 252 70% 53%; /* 5.95:1 sobre background — foco visible */
 
+    /* Curva de salida del sistema (ease-out exponencial): arranca rápido, asienta
+       suave. Una sola curva para todo el motion — coherencia, no ruido. Espeja
+       `transitionTimingFunction.clay` de tailwind.config para el motion en CSS. */
+    --ease-clay: cubic-bezier(0.22, 1, 0.36, 1);
+
     /* Estados. `--x` es el color pleno; `--x-foreground` es el TEXTO sobre un
        tinte `bg-x/15` o `bg-x/10`. En claro el texto va MÁS OSCURO que el tinte.
        Ojo: la L NO es la misma para todos los tonos. El verde necesita bajar
@@ -330,8 +335,8 @@
     cursor: pointer;
     transition:
       border-color 150ms ease,
-      box-shadow 200ms ease,
-      transform 200ms ease;
+      box-shadow 220ms var(--ease-clay),
+      transform 220ms var(--ease-clay);
   }
   .card-interactive:hover {
     border-color: hsl(var(--primary) / 0.45);
@@ -372,7 +377,7 @@
       background-color 150ms ease,
       border-color 150ms ease,
       box-shadow 150ms ease,
-      transform 100ms ease,
+      transform 120ms var(--ease-clay),
       opacity 150ms ease;
   }
   .btn:hover:not(:disabled) {

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { logout } from '@/lib/auth';
 import { BerryIcon } from '@/components/berry-icon';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
 
@@ -317,7 +318,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      <main className="min-w-0 flex-1 p-2">{children}</main>
+      <main className="min-w-0 flex-1 p-2">
+        <SubscriptionBanner />
+        {children}
+      </main>
 
       <CommandPalette />
     </div>

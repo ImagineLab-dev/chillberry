@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bike, Check, Clock, MapPin, Minus, Phone, Plus, ShoppingBag, Store, Trash2, UtensilsCrossed } from 'lucide-react';
@@ -19,6 +21,10 @@ type ModifierGroupView = {
   required: boolean;
   options: ModifierOptionView[];
 };
+
+// Selector de ubicación en mapa (Leaflet) — solo cliente.
+const LocationPicker = dynamic(() => import('@/components/location-picker'), { ssr: false });
+type LatLng = { lat: number; lng: number };
 
 type MenuItemView = {
   id: string;
@@ -73,6 +79,9 @@ type BranchMenu = {
   branchName: string;
   branchAddress: string;
   branchPhone: string | null;
+  /** Coordenadas de la sucursal, para centrar el mapa del selector de ubicación. */
+  branchLat: number | null;
+  branchLng: number | null;
   currency: string;
   countryCode: string;
   /** Hex del color de marca del restaurante, o null si usa el de Chillberry. */
@@ -206,6 +215,9 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [address, setAddress] = useState('');
+  // Ubicación fijada en el mapa (obligatoria en delivery). Arranca null: el
+  // cliente tiene que confirmar dónde queda su casa (ver LocationPicker).
+  const [location, setLocation] = useState<LatLng | null>(null);
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -396,6 +408,9 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   const nameOk = customerName.trim().length >= 2;
   const phoneOk = customerPhone.trim().length >= 6;
   const addressOk = fulfillment !== 'DELIVERY' || address.trim().length >= 5;
+  // En delivery, la ubicación en el mapa es obligatoria: sin coords el pedido
+  // no se puede rutear ni cobrar bien la distancia, y el repartidor va a ciegas.
+  const locationOk = fulfillment !== 'DELIVERY' || location != null;
   // No dejar confirmar un delivery fuera de la ventana de envíos (el server lo
   // rechaza igual, pero así el botón queda deshabilitado con aviso).
   const deliveryTimeOk = fulfillment !== 'DELIVERY' || deliveryAvailable;
@@ -408,6 +423,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     nameOk &&
     phoneOk &&
     addressOk &&
+    locationOk &&
     deliveryTimeOk &&
     !submitting;
 
@@ -430,6 +446,8 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
           address: fulfillment === 'DELIVERY' ? address.trim() : undefined,
+          lat: fulfillment === 'DELIVERY' ? location?.lat : undefined,
+          lng: fulfillment === 'DELIVERY' ? location?.lng : undefined,
           notes: orderNotes.trim() || undefined,
           // Se mandan los IDs de las opciones, nunca precios: el servidor
           // resuelve los deltas y recalcula el total (el nuestro es preview).
@@ -667,7 +685,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
               className="mb-3 h-16 w-16 rounded-xl border-2 border-white/90 object-cover shadow-lg"
             />
           )}
-          <h1 className="text-center font-heading text-3xl font-semibold text-white drop-shadow-md">
+          <h1 className="text-balance text-center font-heading text-3xl font-semibold tracking-tight text-white drop-shadow-md sm:text-4xl">
             {menu.restaurantName}
           </h1>
           <p className="mt-0.5 text-sm text-white/90 drop-shadow">{menu.branchName}</p>
@@ -764,7 +782,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         <div className="space-y-8">
           {visibleCategories.map((category) => (
             <section key={category.id}>
-              <h2 className="mb-3 font-heading text-xl font-semibold text-foreground">{category.name}</h2>
+              <h2 className="mb-3 font-heading text-xl font-semibold tracking-tight text-foreground">{category.name}</h2>
               <div className={isGridLayout ? 'grid grid-cols-2 gap-3 sm:grid-cols-3' : 'space-y-3'}>
                 {category.items.map((item) => {
                   const qty = plainQtyOf(item.id);
@@ -928,7 +946,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
       {cartOpen && (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
           <div className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 sm:rounded-b-xl">
-            <h2 className="mb-4 font-heading text-xl font-semibold text-foreground">Tu pedido</h2>
+            <h2 className="mb-4 font-heading text-xl font-semibold tracking-tight text-foreground">Tu pedido</h2>
 
             <ul className="mb-4 space-y-4">
               {cartLines.map((line) => {
@@ -1097,6 +1115,25 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                   className="input w-full text-base"
                   autoComplete="street-address"
                 />
+
+                <div className="pt-1">
+                  <span className="label mb-1.5 block">
+                    ¿Dónde te lo llevamos?{' '}
+                    {location ? (
+                      <span className="font-normal text-primary">✓ Ubicación fijada</span>
+                    ) : (
+                      <span className="font-normal text-error-foreground">— fijala en el mapa</span>
+                    )}
+                  </span>
+                  <LocationPicker
+                    value={location}
+                    center={{
+                      lat: menu.branchLat ?? -25.28,
+                      lng: menu.branchLng ?? -57.63,
+                    }}
+                    onChange={setLocation}
+                  />
+                </div>
               </div>
             )}
 

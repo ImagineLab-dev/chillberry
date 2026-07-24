@@ -11,6 +11,10 @@ import { Alert, Skeleton, type Tone } from '@/components/ui';
 const LiveMap = dynamic(() => import('@/components/live-map'), { ssr: false });
 
 type Tracking = {
+  /** Estado del PEDIDO (cocina) — le da sentido al tracking mientras el
+   *  delivery sigue PENDING: "lo están preparando" en vez de un eterno
+   *  "buscando repartidor". */
+  orderStatus?: string;
   status: string;
   estimatedMinutes: number | null;
   driverName: string | null;
@@ -168,7 +172,16 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
             </div>
 
             <p className="font-heading text-xl font-semibold text-foreground">
-              {STATUS_LABEL[tracking.status] ?? tracking.status}
+              {/* Mientras no hay repartidor, lo que le importa al cliente es su
+                  COMIDA: recibido → en preparación → listo. "Buscando
+                  repartidor" recién cuando la comida ya está lista. */}
+              {tracking.status === 'PENDING'
+                ? tracking.orderStatus === 'READY'
+                  ? 'Tu pedido está listo — coordinando el repartidor'
+                  : tracking.orderStatus === 'PREPARING' || tracking.orderStatus === 'ACCEPTED'
+                    ? '¡Recibimos tu pedido! La cocina lo está preparando'
+                    : '¡Recibimos tu pedido!'
+                : (STATUS_LABEL[tracking.status] ?? tracking.status)}
             </p>
 
             {/* Se prefiere el tiempo del motor de ruteo: sale de dónde está el

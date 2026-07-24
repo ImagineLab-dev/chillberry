@@ -10,18 +10,30 @@ import {
   CreditCard,
   Gift,
   LogOut,
+  Minus,
   Plus,
   Receipt,
+  Search,
+  ShoppingCart,
+  Trash2,
   Undo2,
   X,
 } from 'lucide-react';
 import { formatMoney } from '@chillberry/domain';
 import { api, type ApiError } from '@/lib/api-client';
+import {
+  ItemModifierPicker,
+  modifiersSatisfied,
+  type ModifierGroupView,
+} from '@/components/item-modifier-picker';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { logout } from '@/lib/auth';
 import { connectKitchenSocket } from '@/lib/socket';
 import { Alert, Badge, EmptyState } from '@/components/ui';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
+import { AyudaSeccion } from '@/components/ayuda-seccion';
+import { useModalBehavior } from '@/components/use-modal';
 import { printSalesReceipt, type SalesReceiptData } from '@/lib/tickets';
 import { ORDER_STATUS_LABEL } from '@/lib/status-labels';
 
@@ -74,6 +86,30 @@ type Invoice = { series: string; number: string; totalAmount: string; issuedAt: 
 
 type PaymentLine = { method: string; amount: string; provider?: string };
 
+// Producto del menú para la venta de mostrador. Mismo endpoint que usa el
+// mesero (`/menu/items`); trae los grupos de modificadores para poder elegir
+// extras (ej. punto de cocción, agregados) igual que en la carga del mesero.
+type MenuItemRow = {
+  id: string;
+  name: string;
+  price: string;
+  isCombo: boolean;
+  modifierGroups: ModifierGroupView[];
+};
+// Línea del carrito de una venta nueva. `unitPrice` es número (base + deltas de
+// los extras elegidos) para sumar el total en vivo; el servidor recalcula el
+// precio real igual. `sig` distingue el MISMO producto con extras distintos:
+// dos cafés, uno con leche y otro sin, son dos líneas, no una con cantidad 2.
+type NewCartLine = {
+  sig: string;
+  menuItemId: string;
+  name: string;
+  modifiersLabel: string;
+  modifierOptionIds: string[];
+  unitPrice: number;
+  quantity: number;
+};
+
 export default function PosPage() {
   const router = useRouter();
   const { notify } = useToast();
@@ -114,11 +150,18 @@ export default function PosPage() {
   // Aviso inline tras un cobro que quedó pendiente de confirmación del proveedor
   // electrónico (aún sin comprobante) — reemplaza el alert() nativo.
   const [chargeNotice, setChargeNotice] = useState<string | null>(null);
+  // Error del COBRO, pegado al botón "Cobrar". Antes iba solo al alert de
+  // arriba de la página: en el primer uso real el cajero tocó "Cobrar" 12
+  // veces (12 × 409) convencido de que "no pasaba nada".
+  const [chargeError, setChargeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [discountType, setDiscountType] = useState('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState('');
   const [discountReason, setDiscountReason] = useState('');
+  // Guard de doble click: aplicar descuento NO es idempotente en el server —
+  // dos POSTs del mismo 10% dejan un 20% en silencio. Plata que se va.
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
   // Código del cupón que muestra el cliente. El monto NO lo tipea el cajero: lo
   // resuelve el servidor desde el cupón (y valida vigencia, tope y mínimo).
   const [discountCoupon, setDiscountCoupon] = useState('');
@@ -129,6 +172,24 @@ export default function PosPage() {
   const [charging, setCharging] = useState(false);
   /** Cierre de caja en vuelo: evita el doble click sobre una acción sin vuelta atrás. */
   const [closing, setClosing] = useState(false);
+
+  // Venta de mostrador ("Nueva venta"): arma un pedido SIN mesa acá mismo en la
+  // caja y lo deja seleccionado para cobrarlo. Antes había que crearlo en
+  // Pedidos/Mesero y volver — dos pantallas para una venta de mostrador.
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [newCart, setNewCart] = useState<NewCartLine[]>([]);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [newOrderError, setNewOrderError] = useState<string | null>(null);
+  // Selección de extras: cuando un producto tiene grupos de modificadores, en
+  // vez de agregarlo directo se abre el picker para elegirlos primero.
+  const [pickingItem, setPickingItem] = useState<MenuItemRow | null>(null);
+  const [pickSelected, setPickSelected] = useState<string[]>([]);
+  // Para qué sucursal se cargó el menú: si cambia la sucursal, se recarga.
+  const menuBranchRef = useRef<string | null>(null);
 
   // Canje de puntos del cliente del pedido seleccionado. Es un paso PREVIO y
   // opcional al cobro: baja el total del pedido antes de cobrarlo.
@@ -141,6 +202,13 @@ export default function PosPage() {
   // re-render entre el error y el reintento podría regenerarla y el servidor
   // ya no reconocería el replay.
   const chargeKeyRef = useRef<string | null>(null);
+  // Focus-trap + scroll-lock de los dos modales (ver use-modal.ts).
+  const movementModalRef = useModalBehavior(movementOpen);
+  const newOrderModalRef = useModalBehavior(newOrderOpen);
+  // Espejo en ref del pedido seleccionado, para que los callbacks async
+  // (búsqueda de puntos) puedan chequear contra el valor ACTUAL y no contra el
+  // del render en que nacieron.
+  const selectedOrderIdRef = useRef<string | null>(null);
 
   async function loadBranches() {
     const b = await api.get<Branch[]>('/branches');
@@ -154,14 +222,17 @@ export default function PosPage() {
     setSession(s);
   }
 
-  async function loadOrders(forBranchId: string) {
-    if (!forBranchId) return;
+  async function loadOrders(forBranchId: string): Promise<PendingOrder[]> {
+    if (!forBranchId) return [];
     const o = await api.get<PendingOrder[]>('/pos/orders/pending', { query: { branchId: forBranchId } });
     setOrders(o);
+    return o;
   }
 
   useEffect(() => {
-    loadBranches().catch(() => {});
+    // Si las sucursales no cargan, TODO lo demás queda vacío en silencio (sin
+    // branchId no se cargan ni sesión ni pedidos): hay que avisarlo, no taparlo.
+    loadBranches().catch(() => setError('No pudimos cargar las sucursales. Tocá «Reintentar».'));
     api
       .get<TenantSettings>('/tenant-settings')
       .then(setTenantSettings)
@@ -174,11 +245,47 @@ export default function PosPage() {
     // limpiarlos al cambiar de sucursal para no mostrar datos cruzados.
     setCloseSummary(null);
     setMovementOpen(false);
+    // El carrito de "Nueva venta" también: sus productos son de la sucursal
+    // anterior — crear con él postea menuItemIds que la sucursal nueva no
+    // tiene y el POST falla entero con un error incomprensible.
+    setNewOrderOpen(false);
+    setNewCart([]);
+    setPickingItem(null);
+    setPickSelected([]);
+    setMenuSearch('');
     // Sin esto, una API caída se ve como "No hay pedidos pendientes" y el
-    // cajero cree que no tiene nada que cobrar.
-    loadSession(branchId).catch(() => setError('No pudimos cargar los datos. Revisá la conexión y reintentá.'));
-    loadOrders(branchId).catch(() => setError('No pudimos cargar los datos. Revisá la conexión y reintentá.'));
+    // cajero cree que no tiene nada que cobrar. El mensaje dice QUÉ falló:
+    // "revisá la conexión" a secas suena a mentira cuando el wifi anda bien.
+    loadSession(branchId).catch(() => setError('No pudimos cargar el estado de la caja. Tocá «Reintentar».'));
+    loadOrders(branchId).catch(() => setError('No pudimos cargar los pedidos pendientes. Tocá «Reintentar».'));
   }, [branchId]);
+
+  /** Reintento manual de TODO lo que carga la pantalla (para el banner de error). */
+  function reintentarCargas() {
+    setError(null);
+    loadBranches().catch(() => setError('No pudimos cargar las sucursales. Tocá «Reintentar».'));
+    if (branchId) {
+      loadSession(branchId).catch(() => setError('No pudimos cargar el estado de la caja. Tocá «Reintentar».'));
+      loadOrders(branchId).catch(() => setError('No pudimos cargar los pedidos pendientes. Tocá «Reintentar».'));
+    }
+  }
+
+  // Escape cierra el modal/paso superior (primero el picker de extras, después
+  // el modal que esté abierto) — nunca en medio de un submit en vuelo.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (pickingItem) {
+        setPickingItem(null);
+        setPickSelected([]);
+        return;
+      }
+      if (newOrderOpen && !creatingOrder) setNewOrderOpen(false);
+      if (movementOpen && !movementSubmitting) setMovementOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pickingItem, newOrderOpen, creatingOrder, movementOpen, movementSubmitting]);
 
   // Aviso EN VIVO a la CAJA: cuando una mesa pide la cuenta, el cajero recibe
   // sonido + pop-up y se refresca la lista de pendientes (así ve el pedido con
@@ -335,14 +442,22 @@ export default function PosPage() {
 
   function selectOrder(order: PendingOrder) {
     setSelectedOrderId(order.id);
+    selectedOrderIdRef.current = order.id;
     setInvoice(null);
     setLastReceipt(null);
     setLastCharged(null);
     setRefundOpen(false);
     setRefundNotice(null);
     setChargeNotice(null);
+    setChargeError(null);
     setChargeSplitId('');
     setTip('');
+    // Pedido nuevo = intento de cobro nuevo. Sin este reset, la clave de un
+    // cobro que falló por red en el pedido ANTERIOR (pero que sí commiteó en el
+    // server) convertía el cobro de ESTE pedido en un "replay" del anterior: el
+    // server devolvía el pago viejo y este pedido quedaba impago con la plata
+    // en el cajón y la pantalla diciendo que se cobró.
+    chargeKeyRef.current = null;
     const target = Number(order.total);
     setLines([{ method: 'CASH', amount: target.toString() }]);
 
@@ -353,9 +468,16 @@ export default function PosPage() {
     setRedeemError(null);
     setRedeemNotice(null);
     if (order.customerPhone) {
+      // Guard contra la carrera de selección rápida: si el cajero ya pasó a
+      // OTRO pedido cuando esta respuesta llega, se descarta. Sin esto, los
+      // puntos del cliente del pedido A quedaban pegados al pedido B — y un
+      // canje ahí le quemaba puntos a A para descontarle a B.
+      const paraPedido = order.id;
       api
         .get<LoyaltyAccount | null>(`/loyalty/accounts/${encodeURIComponent(order.customerPhone)}`)
-        .then((acc) => setAccount(acc))
+        .then((acc) => {
+          if (selectedOrderIdRef.current === paraPedido) setAccount(acc);
+        })
         .catch(() => {});
     }
   }
@@ -368,12 +490,28 @@ export default function PosPage() {
       const split = selectedOrder.billSplits.find((s) => s.id === chargeSplitId);
       return split ? Number(split.amount) : 0;
     }
-    return Number(selectedOrder.total);
+    // "Total completo" en una cuenta dividida con partes YA pagadas = el SALDO,
+    // no el total: el server (resolveTarget) descuenta lo pagado, y prefijar el
+    // total entero garantizaba un 400 de "la suma no coincide".
+    const pagado = selectedOrder.billSplits.filter((s) => s.paid).reduce((a, s) => a + Number(s.amount), 0);
+    return Number(selectedOrder.total) - pagado;
   }
 
-  async function onApplyDiscount() {
+  // Los montos prefijados quedaban stale: aplicar un descuento, canjear puntos
+  // o elegir una parte de la cuenta cambia lo que hay que cobrar, pero la línea
+  // conservaba el número viejo → 400 seguro al cobrar. Con UNA línea (el caso
+  // normal) se re-prefija sola; en pago mixto (varias líneas editadas a mano)
+  // no se toca nada — ahí el cajero está repartiendo montos a propósito.
+  useEffect(() => {
     if (!selectedOrder) return;
+    setLines((prev) => (prev.length === 1 ? [{ ...prev[0]!, amount: targetAmount().toString() }] : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrder?.total, chargeSplitId]);
+
+  async function onApplyDiscount() {
+    if (!selectedOrder || applyingDiscount) return;
     setError(null);
+    setApplyingDiscount(true);
     try {
       const isCoupon = discountType === 'COUPON';
       await api.post('/pos/discounts', {
@@ -391,6 +529,8 @@ export default function PosPage() {
       await loadOrders(branchId);
     } catch (err) {
       setError((err as ApiError).message);
+    } finally {
+      setApplyingDiscount(false);
     }
   }
 
@@ -435,6 +575,7 @@ export default function PosPage() {
     if (!selectedOrder || charging) return;
     setError(null);
     setChargeNotice(null);
+    setChargeError(null);
     setCharging(true);
     // La clave se genera UNA vez por intento y se reusa si el cobro falla y el
     // cajero reintenta: así el servidor reconoce el replay y no cobra dos
@@ -485,12 +626,142 @@ export default function PosPage() {
         setLastCharged({ id: selectedOrder.id, total: receiptSnapshot.total });
       } else {
         setLastReceipt(receiptSnapshot);
-        setChargeNotice('Pago registrado. Esperando confirmación del proveedor electrónico.');
+        // "No completado" tiene DOS causas distintas y el mensaje tiene que
+        // distinguirlas: un pago electrónico espera al proveedor, pero una
+        // parte en EFECTIVO de una cuenta dividida ya está cobrada — decir
+        // "esperando al proveedor" para un cash exitoso confunde al cajero.
+        const todoEfectivo = lines.every((l) => l.method === 'CASH');
+        setChargeNotice(
+          todoEfectivo
+            ? 'Parte cobrada. El pedido sigue abierto con el resto de la cuenta.'
+            : 'Pago registrado. Esperando confirmación del proveedor electrónico.',
+        );
+        // La parte recién cobrada ya no se puede volver a elegir: se resetea el
+        // selector (el efecto de arriba re-prefija la línea con el saldo).
+        if (chargeSplitId) setChargeSplitId('');
       }
     } catch (err) {
-      setError((err as ApiError).message);
+      // Va al lado del botón "Cobrar", no (solo) arriba de todo.
+      setChargeError((err as ApiError).message);
     } finally {
       setCharging(false);
+    }
+  }
+
+  async function loadMenu(forBranchId: string) {
+    if (!forBranchId) return;
+    setMenuLoading(true);
+    try {
+      const m = await api.get<MenuItemRow[]>('/menu/items', { query: { branchId: forBranchId } });
+      setMenuItems(m);
+      menuBranchRef.current = forBranchId;
+    } catch (err) {
+      setNewOrderError((err as ApiError).message);
+    } finally {
+      setMenuLoading(false);
+    }
+  }
+
+  function openNewOrder() {
+    setNewOrderError(null);
+    setPickingItem(null);
+    setPickSelected([]);
+    setNewOrderOpen(true);
+    // El menú se recarga sólo si cambió la sucursal (o nunca se cargó): así abrir
+    // la venta es instantáneo cuando ya se cargó antes en esta sucursal.
+    if (menuBranchRef.current !== branchId) {
+      setMenuItems([]);
+      loadMenu(branchId);
+    }
+  }
+
+  function addToNewCart(item: MenuItemRow) {
+    // Con extras: se abre el picker para elegirlos antes de agregar. Sin extras:
+    // se agrega directo (el caso rápido de mostrador: agua, gaseosa, café solo).
+    if (item.modifierGroups.length > 0) {
+      setPickingItem(item);
+      setPickSelected([]);
+      return;
+    }
+    addLineWithMods(item, []);
+  }
+
+  /** Agrega (o incrementa) una línea con los extras ya elegidos. */
+  function addLineWithMods(item: MenuItemRow, optionIds: string[]) {
+    // La firma agrupa el mismo producto con la misma combinación de extras: un
+    // segundo café idéntico suma cantidad; uno con extras distintos es otra línea.
+    const sig = `${item.id}|${[...optionIds].sort().join(',')}`;
+    const opciones = item.modifierGroups.flatMap((g) => g.options).filter((o) => optionIds.includes(o.id));
+    const delta = opciones.reduce((s, o) => s + Number(o.priceDelta), 0);
+    const unitPrice = Number(item.price) + delta;
+    const modifiersLabel = opciones.map((o) => o.name).join(', ');
+    setNewCart((prev) => {
+      const found = prev.find((l) => l.sig === sig);
+      if (found) {
+        return prev.map((l) => (l.sig === sig ? { ...l, quantity: Math.min(50, l.quantity + 1) } : l));
+      }
+      return [
+        ...prev,
+        { sig, menuItemId: item.id, name: item.name, modifiersLabel, modifierOptionIds: optionIds, unitPrice, quantity: 1 },
+      ];
+    });
+  }
+
+  function confirmMods() {
+    if (!pickingItem) return;
+    addLineWithMods(pickingItem, pickSelected);
+    setPickingItem(null);
+    setPickSelected([]);
+  }
+
+  function changeNewQty(sig: string, delta: number) {
+    setNewCart((prev) =>
+      prev
+        .map((l) => (l.sig === sig ? { ...l, quantity: l.quantity + delta } : l))
+        // Bajar de 1 saca la línea; el máximo por ítem del backend es 50.
+        .filter((l) => l.quantity > 0)
+        .map((l) => (l.quantity > 50 ? { ...l, quantity: 50 } : l)),
+    );
+  }
+
+  function removeNewLine(sig: string) {
+    setNewCart((prev) => prev.filter((l) => l.sig !== sig));
+  }
+
+  const newCartTotal = newCart.reduce((acc, l) => acc + l.unitPrice * l.quantity, 0);
+
+  async function createNewOrder() {
+    if (creatingOrder || newCart.length === 0) return;
+    setNewOrderError(null);
+    setCreatingOrder(true);
+    try {
+      // Sin `tableId` → el backend lo guarda como TAKEAWAY (venta de mostrador).
+      // Se manda `type` explícito igual para que no dependa del default.
+      const created = await api.post<{ id: string }>('/orders', {
+        branchId,
+        type: 'TAKEAWAY',
+        customerName: newCustomerName.trim() || undefined,
+        items: newCart.map((l) => ({
+          menuItemId: l.menuItemId,
+          quantity: l.quantity,
+          modifierOptionIds: l.modifierOptionIds.length > 0 ? l.modifierOptionIds : undefined,
+        })),
+      });
+      setNewOrderOpen(false);
+      setNewCart([]);
+      setNewCustomerName('');
+      setMenuSearch('');
+      setPickingItem(null);
+      setPickSelected([]);
+      // Se refresca la lista y se selecciona el pedido recién creado para cobrarlo
+      // enseguida — el flujo de mostrador es crear y cobrar sin más pasos.
+      const fresh = await loadOrders(branchId);
+      const nuevo = fresh.find((o) => o.id === created.id);
+      if (nuevo) selectOrder(nuevo);
+    } catch (err) {
+      setNewOrderError((err as ApiError).message);
+    } finally {
+      setCreatingOrder(false);
     }
   }
 
@@ -501,8 +772,24 @@ export default function PosPage() {
 
   const lineSum = lines.reduce((acc, l) => acc + (Number(l.amount) || 0), 0);
 
+  const menuBusqueda = menuSearch.trim().toLowerCase();
+  const menuFiltered = menuBusqueda
+    ? menuItems.filter((m) => m.name.toLowerCase().includes(menuBusqueda))
+    : menuItems;
+
+  // Precio en vivo del producto que se está configurando en el picker: base +
+  // los deltas de los extras elegidos. Sólo para mostrar; el server recalcula.
+  const pickDelta = pickingItem
+    ? pickingItem.modifierGroups
+        .flatMap((g) => g.options)
+        .filter((o) => pickSelected.includes(o.id))
+        .reduce((s, o) => s + Number(o.priceDelta), 0)
+    : 0;
+  const pickPreview = pickingItem ? Number(pickingItem.price) + pickDelta : 0;
+
   return (
     <main className="min-h-screen bg-background p-4">
+      <SubscriptionBanner />
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Calculator className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />
@@ -524,7 +811,29 @@ export default function PosPage() {
         </div>
       </header>
 
-      {error && <Alert tone="error" className="mb-3">{error}</Alert>}
+      {error && (
+        <Alert tone="error" className="mb-3">
+          <span className="flex flex-wrap items-center justify-between gap-2">
+            {error}
+            <button type="button" onClick={reintentarCargas} className="btn btn-sm shrink-0">
+              Reintentar
+            </button>
+          </span>
+        </Alert>
+      )}
+
+      <AyudaSeccion id="pos" titulo="Cómo funciona la caja">
+        <p>
+          La <b>sesión de caja</b> es tu turno del cajón: la <b>abrís</b> al empezar el día
+          cargando con cuánto efectivo arrancás, y la <b>cerrás</b> al final contando lo que hay —
+          el sistema compara contra lo que debería haber y te muestra si sobra o falta (arqueo).
+        </p>
+        <p>
+          Con la caja abierta: elegí un pedido de la lista, revisá el total y tocá <b>Cobrar</b>.
+          Sin caja abierta no se puede cobrar en efectivo. «Movimiento de caja» es para plata que
+          entra o sale del cajón sin ser una venta (un retiro, un vuelto que traés).
+        </p>
+      </AyudaSeccion>
 
       <div className="panel mb-6 p-4">
         <h2 className="mb-2 flex items-center gap-2 font-heading font-medium">
@@ -550,7 +859,7 @@ export default function PosPage() {
               type="number"
               value={openingAmount}
               onChange={(e) => setOpeningAmount(e.target.value)}
-              placeholder="Monto de apertura"
+              placeholder="Efectivo inicial del cajón"
             aria-label="Monto de apertura de la caja"
               className="input tabular w-40"
             />
@@ -585,12 +894,20 @@ export default function PosPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <h2 className="mb-2 font-heading font-medium">Pedidos pendientes</h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="font-heading font-medium">Pedidos pendientes</h2>
+            {/* Venta de mostrador: arma un pedido sin mesa acá mismo y lo deja
+                listo para cobrar. Es la caja registradora para comida rápida. */}
+            <button type="button" onClick={openNewOrder} className="btn btn-primary btn-lg">
+              <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+              Nueva venta
+            </button>
+          </div>
           {orders.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
               title="No hay pedidos pendientes"
-              description="Cuando una mesa pida la cuenta o entre un pedido nuevo, aparece acá."
+              description="Cuando una mesa pida la cuenta o entre un pedido nuevo, aparece acá. Para una venta de mostrador, tocá “Nueva venta”."
             />
           ) : (
             <ul className="space-y-2">
@@ -640,6 +957,21 @@ export default function PosPage() {
                 {formatMoney(selectedOrder.discountTotal, countryCode)} ·{' '}
                 <strong>Total {formatMoney(selectedOrder.total, countryCode)}</strong>
               </div>
+
+              {/* Descuentos, puntos y cupones: escondidos por defecto para que el
+                  camino normal (elegir método → cobrar) quede limpio. El cajero
+                  los abre sólo cuando los necesita. Feedback del primer uso real:
+                  "muchos botones y no se sabe qué completa cada uno". */}
+              <details className="group mb-3 rounded-lg border border-border">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium">
+                  <span className="flex items-center gap-2">
+                    <Gift className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                    Descuentos, puntos y cupones
+                  </span>
+                  <span className="text-xs text-muted-foreground group-open:hidden">Abrir ▾</span>
+                  <span className="hidden text-xs text-muted-foreground group-open:inline">Cerrar ▴</span>
+                </summary>
+                <div className="border-t border-border p-3">
 
               {/* Canje de puntos — paso previo opcional al cobro. Se mantiene
                   visible tras canjear todo el saldo para no ocultar el aviso. */}
@@ -728,14 +1060,17 @@ export default function PosPage() {
                 <button
                   onClick={onApplyDiscount}
                   disabled={
+                    applyingDiscount ||
                     (discountType === 'COUPON' ? discountCoupon.trim().length < 3 : !discountValue) ||
                     discountReason.trim().length < 3
                   }
                   className="btn btn-lg"
                 >
-                  Aplicar descuento
+                  {applyingDiscount ? 'Aplicando...' : 'Aplicar descuento'}
                 </button>
               </div>
+                </div>
+              </details>
 
               {selectedOrder.billSplits.length > 0 && (
                 <div className="mb-3 border-t border-border pt-3 text-sm">
@@ -788,6 +1123,18 @@ export default function PosPage() {
                         <option value="MOCK">Pago manual</option>
                       </select>
                     )}
+                    {/* Un toque de más en "Pago mixto" dejaba una línea que no se
+                        podía sacar — la única salida era reseleccionar el pedido. */}
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
+                        className="btn btn-ghost btn-icon"
+                        aria-label={`Quitar la línea de pago ${idx + 1}`}
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 ))}
                 <div className="mt-2 flex items-center gap-2">
@@ -816,7 +1163,7 @@ export default function PosPage() {
                         key={pct}
                         type="button"
                         onClick={() => setTip((Math.round((targetAmount() * pct) / 100)).toString())}
-                        className="btn btn-sm"
+                        className="btn btn-sm min-h-[44px]"
                       >
                         {pct}%
                       </button>
@@ -831,7 +1178,7 @@ export default function PosPage() {
                       className="input tabular w-28"
                     />
                     {Number(tip) > 0 && (
-                      <button type="button" onClick={() => setTip('')} className="btn btn-ghost btn-sm">
+                      <button type="button" onClick={() => setTip('')} className="btn btn-ghost btn-sm min-h-[44px]">
                         Quitar
                       </button>
                     )}
@@ -841,12 +1188,28 @@ export default function PosPage() {
                   </div>
                 </div>
 
+                {/* La causa #1 de "toco Cobrar y no pasa nada" del primer uso
+                    real: cobrar efectivo sin caja abierta daba 409 con el error
+                    arriba de todo, fuera de vista. Ahora se avisa ANTES, acá. */}
+                {lines.some((l) => l.method === 'CASH') && !session && (
+                  <Alert tone="warn" className="mt-3">
+                    Para cobrar en efectivo primero abrí la caja — panel «Sesión de caja», arriba de
+                    todo. Ahí cargás con cuánta plata arranca el cajón.
+                  </Alert>
+                )}
+
+                {chargeError && (
+                  <Alert tone="error" className="mt-3">
+                    {chargeError}
+                  </Alert>
+                )}
+
                 {/* `disabled` mientras cobra: sin esto un doble click manda
                     dos cobros. La clave de idempotencia lo ataja igual en el
                     servidor, pero no hay que depender de una sola defensa. */}
                 <button
                   onClick={onCharge}
-                  disabled={charging}
+                  disabled={charging || (lines.some((l) => l.method === 'CASH') && !session)}
                   className="btn btn-primary btn-lg mt-3 w-full font-semibold"
                 >
                   {charging ? 'Cobrando...' : 'Cobrar'}
@@ -977,6 +1340,7 @@ export default function PosPage() {
           role="presentation"
         >
           <div
+            ref={movementModalRef}
             className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 sm:rounded-b-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
@@ -1083,6 +1447,230 @@ export default function PosPage() {
                 {movementSubmitting ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nueva venta (mostrador): arma un pedido SIN mesa (TAKEAWAY) eligiendo
+          productos del menú, y al crearlo lo deja seleccionado para cobrar. */}
+      {newOrderOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          onClick={() => !creatingOrder && setNewOrderOpen(false)}
+          role="presentation"
+        >
+          <div
+            ref={newOrderModalRef}
+            className="panel flex max-h-[92vh] w-full max-w-2xl animate-slide-up flex-col overflow-hidden rounded-b-none p-5 sm:rounded-b-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Nueva venta de mostrador"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <h2 className="flex items-center gap-2 font-heading text-xl font-semibold text-foreground">
+                <ShoppingCart className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                Nueva venta
+              </h2>
+              <button
+                type="button"
+                onClick={() => setNewOrderOpen(false)}
+                disabled={creatingOrder}
+                className="btn btn-ghost btn-icon"
+                aria-label="Cerrar"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            {newOrderError && (
+              <Alert tone="error" className="mb-3">
+                {newOrderError}
+              </Alert>
+            )}
+
+            {pickingItem ? (
+              /* Elegir extras del producto antes de sumarlo al carrito. Mismo
+                 picker que usa el mesero, así radio/checkbox/topes/obligatorios
+                 se comportan igual y el server valida lo mismo que se muestra. */
+              <>
+                <div className="mb-2">
+                  <p className="font-heading font-medium text-foreground">{pickingItem.name}</p>
+                  <p className="tabular text-xs text-muted-foreground">
+                    Base {formatMoney(Number(pickingItem.price), countryCode)} · elegí los extras
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <ItemModifierPicker
+                    groups={pickingItem.modifierGroups}
+                    selected={pickSelected}
+                    onChange={setPickSelected}
+                    countryCode={countryCode}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                  <span className="tabular text-sm font-medium">{formatMoney(pickPreview, countryCode)}</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPickingItem(null);
+                        setPickSelected([]);
+                      }}
+                      className="btn btn-lg"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmMods}
+                      disabled={!modifiersSatisfied(pickingItem.modifierGroups, pickSelected)}
+                      className="btn btn-primary btn-lg font-semibold"
+                    >
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Buscador de productos */}
+                <div className="relative mb-3">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="text"
+                    value={menuSearch}
+                    onChange={(e) => setMenuSearch(e.target.value)}
+                    placeholder="Buscar producto…"
+                    aria-label="Buscar producto"
+                    className="input w-full pl-9"
+                  />
+                </div>
+
+                {/* Lista de productos — scrollea; el carrito y el pie quedan fijos. */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {menuLoading ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">Cargando productos…</p>
+                  ) : menuFiltered.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      {menuItems.length === 0 ? 'No hay productos cargados en esta sucursal.' : 'Ningún producto coincide con la búsqueda.'}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {menuFiltered.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => addToNewCart(m)}
+                          className="card card-interactive flex min-h-[64px] flex-col justify-between p-2.5 text-left"
+                        >
+                          <span className="text-sm font-medium leading-tight">{m.name}</span>
+                          <span className="mt-1 flex items-center justify-between gap-1">
+                            <span className="tabular text-xs text-muted-foreground">
+                              {formatMoney(Number(m.price), countryCode)}
+                            </span>
+                            {/* Aviso de que el toque abre la elección de extras
+                                en vez de sumar directo. */}
+                            {m.modifierGroups.length > 0 && (
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-primary">
+                                extras
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Carrito de la venta */}
+                {newCart.length > 0 && (
+                  <div className="mt-3 max-h-48 overflow-y-auto border-t border-border pt-3">
+                    <ul className="space-y-1.5">
+                      {newCart.map((l) => (
+                        <li key={l.sig} className="flex items-center gap-2 text-sm">
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">{l.name}</span>
+                            {l.modifiersLabel && (
+                              <span className="block truncate text-xs text-muted-foreground">{l.modifiersLabel}</span>
+                            )}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => changeNewQty(l.sig, -1)}
+                              className="btn btn-icon btn-sm"
+                              aria-label={`Quitar uno de ${l.name}`}
+                            >
+                              <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <span className="tabular w-6 text-center">{l.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => changeNewQty(l.sig, 1)}
+                              className="btn btn-icon btn-sm"
+                              aria-label={`Agregar uno de ${l.name}`}
+                            >
+                              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                          <span className="tabular w-20 text-right text-muted-foreground">
+                            {formatMoney(l.unitPrice * l.quantity, countryCode)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeNewLine(l.sig)}
+                            className="btn btn-ghost btn-icon btn-sm"
+                            aria-label={`Sacar ${l.name} de la venta`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Nombre del cliente (opcional) + pie con total y confirmar */}
+                <div className="mt-3 border-t border-border pt-3">
+                  <input
+                    type="text"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="Nombre del cliente (opcional)"
+                    maxLength={120}
+                    aria-label="Nombre del cliente"
+                    className="input mb-3 w-full"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="tabular text-sm font-medium">
+                      Total: {formatMoney(newCartTotal, countryCode)}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewOrderOpen(false)}
+                        disabled={creatingOrder}
+                        className="btn btn-lg"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={createNewOrder}
+                        disabled={creatingOrder || newCart.length === 0}
+                        className="btn btn-primary btn-lg font-semibold"
+                      >
+                        {creatingOrder ? 'Creando…' : 'Crear y cobrar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

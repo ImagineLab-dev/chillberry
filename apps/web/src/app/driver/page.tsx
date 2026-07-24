@@ -1,6 +1,7 @@
 'use client';
 
 import { ActivarAvisos } from '@/components/activar-avisos';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bike, LogOut, MapPin, Package, Phone, Store } from 'lucide-react';
@@ -186,6 +187,7 @@ export default function DriverPage() {
 
   return (
     <main className="min-h-screen bg-background p-4 text-foreground">
+      <SubscriptionBanner />
       <header className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Bike className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />

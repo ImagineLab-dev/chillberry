@@ -22,6 +22,7 @@ import { connectKitchenSocket } from '@/lib/socket';
 import { offlineQueue } from '@/lib/offline-queue';
 import { logout } from '@/lib/auth';
 import { Badge } from '@/components/ui';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 
@@ -124,7 +125,16 @@ export default function KitchenPage() {
         setBranches(b);
         if (b[0]) setBranchId(b[0].id);
       })
-      .catch(() => {});
+      // Sin sucursales el tablero queda vacío PARA SIEMPRE y en silencio (sin
+      // branchId nunca se cargan tareas): hay que avisarlo, no taparlo.
+      .catch(() =>
+        notify({
+          title: 'No pudimos cargar las sucursales',
+          description: 'El tablero va a quedar vacío. Revisá la conexión y recargá la página.',
+          tone: 'error',
+        }),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reloj para "retrasado" + intento periódico de sincronizar la cola offline.
@@ -225,6 +235,7 @@ export default function KitchenPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
+      <SubscriptionBanner />
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
         <div className="flex items-center gap-3">
           <ChefHat className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />

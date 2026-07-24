@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Globe, Pencil, Plus, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { Globe, MapPin, Pencil, Plus, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+// Selector de ubicación en mapa — solo cliente (Leaflet necesita window).
+const LocationPicker = dynamic(() => import('@/components/location-picker'), { ssr: false });
 import { Alert, Badge, Skeleton } from '@/components/ui';
 import { BranchPublicConfig } from '@/components/branch-public-config';
 import { BranchScheduleEditor } from '@/components/branch-schedule-editor';
@@ -309,23 +312,38 @@ export function RestaurantBranches({ restaurantId }: { restaurantId: string }) {
                         className="input w-full sm:w-44"
                       />
                     </div>
+                    {/* Ubicación de la sucursal en un mapa, en vez de tipear
+                        latitud/longitud a mano (nadie sabe sus coordenadas). Es
+                        lo que habilita el envío por distancia y que la
+                        auto-asignación elija al repartidor más cercano. */}
+                    <details className="rounded-lg border border-border">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium">
+                        <MapPin className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                        Ubicación en el mapa
+                        {editForm.lat && editForm.lng ? (
+                          <span className="text-xs font-normal text-primary">✓ fijada</span>
+                        ) : (
+                          <span className="text-xs font-normal text-muted-foreground">sin fijar</span>
+                        )}
+                      </summary>
+                      <div className="border-t border-border p-3">
+                        <LocationPicker
+                          value={
+                            editForm.lat && editForm.lng
+                              ? { lat: Number(editForm.lat), lng: Number(editForm.lng) }
+                              : null
+                          }
+                          center={{
+                            lat: editForm.lat ? Number(editForm.lat) : -25.28,
+                            lng: editForm.lng ? Number(editForm.lng) : -57.63,
+                          }}
+                          onChange={(v) =>
+                            setEditForm({ ...editForm, lat: String(v.lat), lng: String(v.lng) })
+                          }
+                        />
+                      </div>
+                    </details>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="number"
-                        step="any"
-                        value={editForm.lat}
-                        onChange={(e) => setEditForm({ ...editForm, lat: e.target.value })}
-                        placeholder="Latitud (opcional)"
-                        className="input w-full sm:w-40"
-                      />
-                      <input
-                        type="number"
-                        step="any"
-                        value={editForm.lng}
-                        onChange={(e) => setEditForm({ ...editForm, lng: e.target.value })}
-                        placeholder="Longitud (opcional)"
-                        className="input w-full sm:w-40"
-                      />
                       <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <input
                           type="checkbox"

@@ -5,21 +5,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { login, getCurrentClaims } from '@/lib/auth';
+import { ROLE_HOME } from '@/lib/role-home';
 import type { ApiError } from '@/lib/api-client';
 import { BerryIcon } from '@/components/berry-icon';
 import { Turnstile } from '@/components/turnstile';
 import { Alert } from '@/components/ui';
 
-// Espejo de ROLE_HOME en middleware.ts — si se agrega un rol, va en los dos.
-const ROLE_HOME: Record<string, string> = {
-  SUPER_ADMIN: '/super-admin/tenants',
-  OWNER: '/admin/dashboard',
-  ADMIN: '/admin/dashboard',
-  KITCHEN: '/kitchen',
-  WAITER: '/waiter',
-  CASHIER: '/pos',
-  DRIVER: '/driver',
-};
 
 export default function LoginPage() {
   const router = useRouter();

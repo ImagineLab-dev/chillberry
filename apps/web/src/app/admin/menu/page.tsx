@@ -112,6 +112,8 @@ export default function MenuPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [categoryName, setCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [avisoCategoria, setAvisoCategoria] = useState<string | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [itemPrice, setItemPrice] = useState('');
@@ -218,13 +220,21 @@ export default function MenuPage() {
 
   async function onCreateCategory(e: React.FormEvent) {
     e.preventDefault();
+    if (creatingCategory) return;
     setError(null);
+    setCreatingCategory(true);
     try {
-      await api.post('/menu/categories', { branchId, name: categoryName });
+      const nombre = categoryName;
+      await api.post('/menu/categories', { branchId, name: nombre });
       setCategoryName('');
       await loadMenu(branchId);
+      // Confirmación visible: en el primer uso real una categoría "no entró" y
+      // el dueño la cargó dos veces sin saber si la primera había funcionado.
+      setAvisoCategoria(`Categoría «${nombre}» creada.`);
     } catch (err) {
       setError((err as ApiError).message);
+    } finally {
+      setCreatingCategory(false);
     }
   }
 
@@ -514,11 +524,16 @@ export default function MenuPage() {
               required
               className="input min-w-0 flex-1"
             />
-            <button className="btn btn-primary shrink-0">
+            <button className="btn btn-primary shrink-0" disabled={creatingCategory}>
               <Plus className="h-4 w-4" />
-              Agregar
+              {creatingCategory ? 'Agregando...' : 'Agregar'}
             </button>
           </form>
+          {avisoCategoria && (
+            <Alert tone="ok" className="mb-3">
+              {avisoCategoria}
+            </Alert>
+          )}
           {loading && (
             <div className="space-y-2">
               <Skeleton className="h-10" />

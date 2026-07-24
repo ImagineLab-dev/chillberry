@@ -2,11 +2,12 @@
 
 import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useState } from 'react';
-import { Pencil, Power, Trash2, UserPlus, UsersRound, X } from 'lucide-react';
+import { MailPlus, Pencil, Power, Trash2, UserPlus, UsersRound, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
 import { getCurrentUser } from '@/lib/auth';
 import { Alert, Badge, EmptyState, PageHeader, Skeleton } from '@/components/ui';
 import { SettingsTabs } from '@/components/settings-tabs';
+import { ROLE_LABEL } from '@/lib/status-labels';
 
 type StaffUser = {
   id: string;
@@ -18,6 +19,8 @@ type StaffUser = {
   active: boolean;
   /** Sucursal donde trabaja. `null` = ve todos los locales (el dueño). */
   branchId: string | null;
+  /** true = se creó por invitación y todavía no fijó su contraseña (no puede entrar aún). */
+  invitePending: boolean;
   createdAt: string;
 };
 
@@ -38,6 +41,10 @@ export default function StaffPage() {
   const [role, setRole] = useState('WAITER');
   const [branchId, setBranchId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  // Guard de doble click en el alta: dos POSTs seguidos creaban la cuenta y
+  // ademas mostraban "invitacion enviada" + "ya existe" a la vez.
+  const [creating, setCreating] = useState(false);
   // Carga inicial del equipo (GET /users). Sin esto, un GET fallido/lento se veía
   // igual que "todavía no cargaste a nadie" (cuenta vacía), sin forma de reintentar.
   const [loading, setLoading] = useState(true);
@@ -52,6 +59,7 @@ export default function StaffPage() {
   const [editPassword, setEditPassword] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Solo el propietario puede cambiar roles o tocar la fila de otro propietario
@@ -79,23 +87,38 @@ export default function StaffPage() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (creating) return;
     setError(null);
+    setAviso(null);
+    setCreating(true);
+    // Sin contraseña = se le manda una invitación por mail para que la fije él;
+    // con contraseña = la cuenta queda lista y el owner le pasa la clave a mano.
+    const invita = !password.trim();
     try {
       await api.post('/users', {
         name,
         email,
-        password,
+        // El backend crea la invitación cuando `password` viene ausente.
+        password: invita ? undefined : password,
         role,
         // Vacío = sin sucursal, y eso significa que ve TODOS los locales.
         branchId: branchId || undefined,
       });
+      const emailCreado = email;
       setName('');
       setEmail('');
       setPassword('');
       setBranchId('');
       await load();
+      setAviso(
+        invita
+          ? `Le enviamos una invitación a ${emailCreado} para que elija su contraseña y entre.`
+          : `Cuenta de ${emailCreado} creada y lista para entrar.`,
+      );
     } catch (err) {
       setError((err as ApiError).message);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -136,6 +159,22 @@ export default function StaffPage() {
       setError((err as ApiError).message);
     } finally {
       setSavingId(null);
+    }
+  }
+
+  // Reenviar invitación: rota el token (el link viejo muere) y extiende el
+  // vencimiento — para "no me llegó el mail" o invitaciones vencidas (7 días).
+  async function onResendInvite(u: StaffUser) {
+    setError(null);
+    setAviso(null);
+    setResendingId(u.id);
+    try {
+      await api.post(`/users/${u.id}/resend-invite`);
+      setAviso(`Invitación reenviada a ${u.email}. El enlace anterior dejó de servir.`);
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -203,20 +242,22 @@ export default function StaffPage() {
           autoComplete="off"
           className="input w-full sm:w-52"
         />
+        {/* Contraseña OPCIONAL: en blanco = le llega una invitación al mail y él
+            elige su clave (lo más cómodo y seguro). Con clave = queda lista al
+            toque. `minLength` sólo actúa si escribís algo. */}
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Contraseña"
-          required
+          placeholder="Contraseña (opcional)"
           minLength={8}
           autoComplete="new-password"
           className="input w-full sm:w-44"
         />
-        <select value={role} onChange={(e) => setRole(e.target.value)} className="input w-full sm:w-36">
+        <select value={role} onChange={(e) => setRole(e.target.value)} className="input w-full sm:w-36" aria-label="Rol">
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {ROLE_LABEL[r] ?? r}
             </option>
           ))}
         </select>
@@ -235,14 +276,23 @@ export default function StaffPage() {
             </option>
           ))}
         </select>
-        <button className="btn btn-primary">
+        <button className="btn btn-primary" disabled={creating}>
           <UserPlus className="h-4 w-4" />
-          Crear usuario
+          {creating ? 'Creando...' : password.trim() ? 'Crear usuario' : 'Enviar invitación'}
         </button>
       </form>
+      <p className="mb-4 -mt-3 text-xs text-muted-foreground">
+        Dejá la contraseña en blanco y le llega una invitación por mail para que elija la suya. Si
+        preferís, ponésela vos y pasásela a mano.
+      </p>
       {error && (
         <Alert tone="error" className="mb-4">
           {error}
+        </Alert>
+      )}
+      {aviso && (
+        <Alert tone="ok" className="mb-4">
+          {aviso}
         </Alert>
       )}
 
@@ -284,7 +334,7 @@ export default function StaffPage() {
                   <span className="text-muted-foreground">({u.email})</span>
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="info">{u.role}</Badge>
+                  <Badge tone="info">{ROLE_LABEL[u.role] ?? u.role}</Badge>
                   {/* Dónde trabaja. El dueño maneja todos los locales por
                       definición; para el resto, "Todas las sucursales" es un
                       aviso, no un dato: significa que ve la facturación y la
@@ -295,9 +345,30 @@ export default function StaffPage() {
                     ) : (
                       <Badge tone="warn">Todas las sucursales</Badge>
                     ))}
-                  <Badge tone={u.active ? 'ok' : 'error'} dot>
-                    {u.active ? 'Activo' : 'Inactivo'}
-                  </Badge>
+                  {/* Invitado que todavía no fijó su clave: no puede entrar aún.
+                      Se muestra en vez del estado activo/inactivo para que quede
+                      claro que la cuenta está a medias, esperando al empleado. */}
+                  {u.invitePending ? (
+                    <>
+                      <Badge tone="warn" dot>
+                        Invitación pendiente
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => onResendInvite(u)}
+                        disabled={resendingId === u.id}
+                        className="btn btn-sm"
+                        title="Rota el enlace: el anterior deja de servir"
+                      >
+                        <MailPlus className="h-4 w-4" />
+                        {resendingId === u.id ? 'Enviando...' : 'Reenviar invitación'}
+                      </button>
+                    </>
+                  ) : (
+                    <Badge tone={u.active ? 'ok' : 'error'} dot>
+                      {u.active ? 'Activo' : 'Inactivo'}
+                    </Badge>
+                  )}
                   {canManage ? (
                     <>
                       <button
@@ -366,12 +437,12 @@ export default function StaffPage() {
                       >
                         {roleOptions.map((r) => (
                           <option key={r} value={r}>
-                            {r}
+                            {ROLE_LABEL[r] ?? r}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <span className="input flex w-full items-center text-muted-foreground sm:w-36">{u.role}</span>
+                      <span className="input flex w-full items-center text-muted-foreground sm:w-36">{ROLE_LABEL[u.role] ?? u.role}</span>
                     )}
                     <select
                       value={editBranchId}

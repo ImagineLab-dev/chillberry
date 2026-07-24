@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { RESERVED_SUBDOMAINS } from '@chillberry/domain';
 import { decodeJwtPayload, isExpired } from './lib/jwt';
-
-const ROLE_HOME: Record<string, string> = {
-  // Staff interno de Smartia: su casa es el panel del SaaS, no el de un
-  // restaurante. `/super-admin` redirige a `/super-admin/tenants`.
-  SUPER_ADMIN: '/super-admin/tenants',
-  OWNER: '/admin/dashboard',
-  ADMIN: '/admin/dashboard',
-  KITCHEN: '/kitchen',
-  WAITER: '/waiter',
-  CASHIER: '/pos',
-  DRIVER: '/driver',
-};
+import { ROLE_HOME } from './lib/role-home';
 
 // Prefijo de ruta -> roles permitidos. OWNER/ADMIN pueden entrar a todo
 // (supervisión), el resto queda limitado a su propia superficie.
@@ -39,9 +29,12 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: string[] }> = [
 //            el pedido de delivery/retiro. Es un cliente anónimo, igual que /menu.
 //  /s      → "storefront" de un tenant por subdominio (varias sucursales).
 //  /encuesta → encuesta de calificación post-visita (link que llega por aviso).
+//  /invitacion → link del mail para que un empleado invitado fije su contraseña.
+//                No hay sesión todavía (recién la crea al aceptar), así que tiene
+//                que ser pública o el middleware lo mandaría a /login.
 // `/r/` y `/s/` con barra: prefijos de una sola letra, sin la barra abrirían
 // cualquier futura ruta top-level que empiece con esa letra.
-const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/r/', '/s/', '/encuesta'];
+const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/r/', '/s/', '/encuesta', '/invitacion'];
 
 /**
  * Archivos que App Router genera en la raíz a partir de `app/` (icon.svg,
@@ -59,17 +52,15 @@ const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/
 const ASSETS_RAIZ =
   /^\/(favicon\.ico|icon\.\w+|apple-icon\.?\w*|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml|sw\.js|manifest\.webmanifest)$/;
 
-// Dominio raíz de la app en producción (ej. 'chillberry.io'). En dev, el host
+// Dominio raíz de la app en producción (ej. 'chillberry.app'). En dev, el host
 // es 'localhost:3000' y los subdominios se prueban con '<sub>.localhost:3000'.
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'localhost:3000';
 
-// Subdominios que NO son un tenant: la app principal, correo, infra. El resto
-// se interpreta como el `publicSubdomain`/`slug` de un restaurante.
-const RESERVED_SUBDOMAINS = new Set([
-  'www', 'app', 'api', 'admin', 'super-admin', 'dashboard',
-  'mail', 'smtp', 'ftp', 'ns', 'ns1', 'ns2', 'cdn', 'assets', 'static',
-  'status', 'help', 'support', 'blog',
-]);
+// Subdominios que NO son un tenant: la lista vive en el domain package,
+// COMPARTIDA con el chequeo de escritura (tenant-settings) y el de resolucion
+// (public-menu). Antes habia una copia local aca y ya estaba desincronizada
+// (le faltaban `chillberry`, `system`, `smartia`, `superadmin`).
+const RESERVADOS = new Set<string>(RESERVED_SUBDOMAINS);
 
 /** Devuelve el subdominio de tenant, o null si el host es la app principal. */
 function tenantSubdomain(host: string | null): string | null {
@@ -81,14 +72,14 @@ function tenantSubdomain(host: string | null): string | null {
   const sub = h.slice(0, h.length - root.length - 1);
   // sólo un label (sin puntos): 'a.b.root' no es un tenant válido acá
   if (!sub || sub.includes('.')) return null;
-  return RESERVED_SUBDOMAINS.has(sub) ? null : sub;
+  return RESERVADOS.has(sub) ? null : sub;
 }
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1) Host de subdominio de tenant → storefront público, y NADA más.
-  //    El link `<sub>.chillberry.io` sirve sólo la carta compartible; el staff
+  //    El link `<sub>.chillberry.app` sirve sólo la carta compartible; el staff
   //    entra por el dominio principal. Los deep-links públicos (`/r`, `/track`,
   //    `/menu`, `/s`) y los assets de Next pasan tal cual; todo lo demás se
   //    reescribe al storefront del tenant.
@@ -98,7 +89,12 @@ export function middleware(request: NextRequest) {
       pathname.startsWith('/_next') ||
       ASSETS_RAIZ.test(pathname) ||
       PUBLIC_PATHS.some(
-        (p) => pathname.startsWith(p) && p !== '/login' && p !== '/register' && p !== '/recuperar',
+        (p) =>
+          pathname.startsWith(p) &&
+          p !== '/login' &&
+          p !== '/register' &&
+          p !== '/recuperar' &&
+          p !== '/invitacion',
       );
     if (isPassThrough) return NextResponse.next();
     const url = request.nextUrl.clone();

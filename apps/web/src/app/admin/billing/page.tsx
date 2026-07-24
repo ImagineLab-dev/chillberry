@@ -5,6 +5,7 @@ import { Check, FileText, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
 import { getCurrentUser } from '@/lib/auth';
 import { Alert, Badge, EmptyState, PageHeader, type Tone } from '@/components/ui';
+import { INVOICE_STATUS_LABEL } from '@/lib/status-labels';
 import { SettingsTabs } from '@/components/settings-tabs';
 
 type Plan = {
@@ -266,6 +267,31 @@ export default function BillingPage() {
           </div>
         )}
 
+        {/* PAST_DUE / CANCELLED eran callejones sin salida: ni activar (solo
+            TRIAL), ni cancelar, ni reactivar — el dueño con un pago pendiente no
+            tenía NINGÚN botón para regularizar. Este CTA reusa el mismo
+            `subscribe` del plan actual (checkout nuevo → webhook → ACTIVE). */}
+        {isOwner && (subscription.status === 'PAST_DUE' || subscription.status === 'CANCELLED') && (
+          <div className="mt-4 rounded-lg border border-warn/40 bg-warn/5 p-4">
+            <p className="text-sm text-foreground">
+              {subscription.status === 'PAST_DUE'
+                ? 'Tenés un pago pendiente. Regularizalo para no perder el acceso.'
+                : 'Tu suscripción está cancelada. Podés volver cuando quieras — tus datos siguen acá.'}
+            </p>
+            <button type="button" onClick={onActivate} disabled={acting} className="btn btn-primary mt-3">
+              {subscription.status === 'PAST_DUE' ? 'Pagar ahora' : 'Reanudar suscripción'} — {subscription.plan.name}
+            </button>
+          </div>
+        )}
+
+        {/* SUSPENDED es decisión del super-admin: el backend rechaza subscribe/
+            changePlan a propósito, así que acá no va un botón que va a fallar. */}
+        {subscription.status === 'SUSPENDED' && (
+          <Alert tone="error" className="mt-4">
+            Tu suscripción está suspendida. Escribinos a soporte@chillberry.app para reactivarla.
+          </Alert>
+        )}
+
         {/* Acciones secundarias: cancelar o reactivar. El dueño es el único que
             las ve. */}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -353,7 +379,7 @@ export default function BillingPage() {
               <span className="tabular">
                 {inv.currency} {inv.amount}
               </span>
-              <Badge tone={INVOICE_TONE[inv.status]}>{inv.status}</Badge>
+              <Badge tone={INVOICE_TONE[inv.status]}>{INVOICE_STATUS_LABEL[inv.status] ?? inv.status}</Badge>
             </span>
           </li>
         ))}

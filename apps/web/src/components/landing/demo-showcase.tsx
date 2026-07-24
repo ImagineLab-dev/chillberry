@@ -138,7 +138,7 @@ const KDS_STATIC = [
 
 const KITCHEN_STEPS = [
   'Entra la comanda: el mozo la cargó en el salón',
-  'El cocinero la toma — el reloj empieza a correr',
+  'El cocinero la toma y el reloj empieza a correr',
   'Sale el plato: queda listo para servir',
   'El mozo lo levanta y la comanda se cierra',
 ];
@@ -240,7 +240,7 @@ const WAITER_STEPS = [
   'El mozo abre la mesa 3',
   'Carga lo que pidieron y lo manda a cocina',
   'Cocina avisa: el plato está listo para servir',
-  'La mesa pide la cuenta — aparece en el mapa',
+  'La mesa pide la cuenta y aparece en el mapa',
 ];
 
 // Etiquetas cortas a propósito: son chips dentro de una tarjeta angosta, y el
@@ -339,7 +339,7 @@ const REVENUE_DAYS = [42, 55, 38, 61, 72, 90, 100];
 function OwnerDashboard({ highlightAlerts }: { highlightAlerts: boolean }) {
   return (
     <>
-      <div className={`mb-3 rounded-lg border-l-4 border-warn bg-warn/10 p-3 ${focusRing(highlightAlerts)}`}>
+      <div className={`mb-3 rounded-lg border border-warn/30 bg-warn/10 p-3 ${focusRing(highlightAlerts)}`}>
         <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warn-foreground" />
           Requiere tu atención
@@ -389,7 +389,7 @@ function OwnerDashboard({ highlightAlerts }: { highlightAlerts: boolean }) {
           riel le da una altura definida a la barra. */}
       <div className="card mt-3 p-3">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="font-heading text-sm font-semibold">Ingresos — últimos 7 días</p>
+          <p className="font-heading text-sm font-semibold">Ingresos de los últimos 7 días</p>
           <span className="text-[11px] text-muted-foreground">Zona horaria del local</span>
         </div>
         <div className="flex h-24 gap-2">
@@ -477,7 +477,7 @@ function OwnerControl() {
       </p>
       <ul className="space-y-2 text-xs">
         {[
-          { who: 'Ana (cajera)', what: 'Descuento 20%', amount: '₲ 16.000', why: 'Cortesía — demora en cocina' },
+          { who: 'Ana (cajera)', what: 'Descuento 20%', amount: '₲ 16.000', why: 'Cortesía por demora en cocina' },
           { who: 'Luis (mozo)', what: 'Anulación', amount: '₲ 45.000', why: 'Cliente se retiró antes de servir' },
           { who: 'Ana (cajera)', what: 'Retiro de caja', amount: '₲ 30.000', why: 'Pago a proveedor de hielo' },
         ].map((r) => (
@@ -579,7 +579,7 @@ const DRIVER_STEPS = [
   'Cierra con el código que le dicta tu cliente',
 ];
 
-const DRIVER_BADGE = ['Sin asignar', 'Asignada a vos', 'Retirada — en camino', 'Entregada'];
+const DRIVER_BADGE = ['Sin asignar', 'Asignada a vos', 'Retirada, en camino', 'Entregada'];
 const DRIVER_TONE = ['badge-neutral', 'badge-warn', 'badge-info', 'badge-ok'];
 
 function DemoDriver({ step }: { step: number }) {
@@ -653,7 +653,7 @@ function DemoClient({ step }: { step: number }) {
       <div className="panel mx-auto max-w-sm p-4">
         {step === 0 && (
           <>
-            <p className="mb-3 font-heading text-base font-semibold">Carta — Sucursal Centro</p>
+            <p className="mb-3 font-heading text-base font-semibold">Carta de Sucursal Centro</p>
             <ul className="space-y-2">
               {CLIENT_MENU.map((m, i) => (
                 <li key={m.name} className={`card flex items-center gap-3 p-3 ${focusRing(i === 0)}`}>

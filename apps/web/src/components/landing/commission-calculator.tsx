@@ -101,7 +101,7 @@ export function CommissionCalculator({ planMonthlyUsd }: { planMonthlyUsd: numbe
             )}
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Tu medio de pago te sigue costando lo mismo — la comisión de la app de pedidos es la que desaparece.
+            Tu medio de pago te sigue costando lo mismo: la comisión de la app de pedidos es la que desaparece.
           </p>
         </div>
       </div>

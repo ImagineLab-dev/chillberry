@@ -140,7 +140,7 @@ export default function SettingsPage() {
 
   // Dominio raíz para el link compartible. En prod se setea vía env; el default
   // es el dominio real, que es lo que el tenant pone en Instagram.
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'chillberry.io';
+  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'chillberry.app';
   const storeUrl = publicSubdomain.trim()
     ? `https://${publicSubdomain.trim().toLowerCase()}.${rootDomain}`
     : '';
@@ -414,8 +414,10 @@ export default function SettingsPage() {
                 Enlace de tu carta online
               </label>
               <p className="text-xs text-muted-foreground">
-                Tu carta compartible para la bio de Instagram o WhatsApp. Elegí un nombre corto;
-                queda como <span className="tabular">tunombre.{rootDomain}</span>.
+                El escaparate de TODO tu restaurante (todas las sucursales) para la bio de
+                Instagram o WhatsApp. Elegí un nombre corto; queda como{' '}
+                <span className="tabular">tunombre.{rootDomain}</span>. La carta de pedido de UNA
+                sucursal tiene su propio enlace en <b>Restaurantes → tu sucursal → Pedido online</b>.
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <input
@@ -432,7 +434,16 @@ export default function SettingsPage() {
               </div>
               {storeUrl && (
                 <div id="subdomain-preview" className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="tabular break-all text-sm text-primary">{storeUrl}</span>
+                  {/* Un LINK de verdad, no texto pintado de violeta: en el primer
+                      uso real el dueño hizo clic y "no entraba a ninguna parte". */}
+                  <a
+                    href={storeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tabular break-all text-sm text-primary underline-offset-2 hover:underline"
+                  >
+                    {storeUrl}
+                  </a>
                   <button type="button" onClick={onCopyStoreUrl} className="btn btn-sm">
                     {copied ? '¡Copiado!' : 'Copiar'}
                   </button>

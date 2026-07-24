@@ -117,7 +117,9 @@ export function ItemModifierPicker({
                     />
                     <span className="min-w-0 flex-1 text-sm text-foreground">{option.name}</span>
                     <span className="tabular shrink-0 text-xs font-medium text-muted-foreground">
-                      {delta !== 0 ? `+${formatMoney(delta, countryCode)}` : 'Sin cargo'}
+                      {/* El "+" sólo para deltas positivos: con uno negativo
+                          (descuento por quitar algo) quedaba "+₲ -500". */}
+                      {delta > 0 ? `+${formatMoney(delta, countryCode)}` : delta < 0 ? formatMoney(delta, countryCode) : 'Sin cargo'}
                     </span>
                   </label>
                 );

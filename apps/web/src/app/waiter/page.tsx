@@ -6,6 +6,7 @@ import { BellRing, Check, LogOut, Minus, Plus, Receipt, Users, X } from 'lucide-
 import { BILL_SPLIT_MODE, formatMoney } from '@chillberry/domain';
 import { api, type ApiError } from '@/lib/api-client';
 import { ItemModifierPicker, modifiersSatisfied, type ModifierGroupView } from '@/components/item-modifier-picker';
+import { SubscriptionBanner } from '@/components/subscription-banner';
 import { logout } from '@/lib/auth';
 import { connectKitchenSocket } from '@/lib/socket';
 import {
@@ -130,7 +131,9 @@ export default function WaiterPage() {
   }
 
   useEffect(() => {
-    loadBranches().catch(() => {});
+    // Sin sucursales no carga NADA (mesas/tareas dependen de branchId): una API
+    // caida se veia como pantalla vacia sin ningun aviso.
+    loadBranches().catch(() => setError('No pudimos cargar los datos. Revisá la conexión y reintentá.'));
     api
       .get<{ countryCode: string }>('/tenant-settings')
       .then((s) => setCountryCode(s.countryCode))
@@ -357,6 +360,7 @@ export default function WaiterPage() {
 
   return (
     <main className="min-h-screen bg-background p-4">
+      <SubscriptionBanner />
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Users className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />

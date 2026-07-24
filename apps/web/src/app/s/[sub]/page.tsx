@@ -26,7 +26,7 @@ type Store = {
 
 /**
  * "Storefront" de un restaurante servido por su subdominio
- * (`<sub>.chillberry.io`). El middleware reescribe la raíz del subdominio a esta
+ * (`<sub>.chillberry.app`). El middleware reescribe la raíz del subdominio a esta
  * ruta. Muestra las sucursales publicadas: si hay una sola redirige directo a su
  * carta `/r/:slug`; si hay varias, un selector. Cada sucursal linkea a su carta,
  * donde vive el pedido de delivery/retiro.

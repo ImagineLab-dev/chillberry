@@ -49,6 +49,24 @@ export async function resetPassword(email: string, code: string, password: strin
   await api.post('/auth/reset-password', { email, code, password }, { publicEndpoint: true });
 }
 
+export type Invitation = { email: string; name: string; tenantName: string };
+
+/** Lee una invitación al equipo por su token (link del mail). 401 si venció o ya se usó. */
+export async function getInvitation(token: string): Promise<Invitation> {
+  return api.get<Invitation>(`/auth/invitation/${encodeURIComponent(token)}`, { publicEndpoint: true });
+}
+
+/** El empleado fija su contraseña con el token del mail y queda logueado. */
+export async function acceptInvite(token: string, password: string): Promise<TokenPair> {
+  const result = await api.post<TokenPair>(
+    '/auth/accept-invite',
+    { token, password },
+    { publicEndpoint: true },
+  );
+  tokens.set(result.accessToken, result.refreshToken, result.expiresIn);
+  return result;
+}
+
 export async function login(email: string, password: string, turnstileToken: string): Promise<TokenPair> {
   const result = await api.post<TokenPair>(
     '/auth/login',

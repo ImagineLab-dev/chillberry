@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AlertTriangle, Bike, Clock, MapPin, Package, Phone, User, X } from 'lucide-react';
+// Leaflet solo en cliente.
+const LiveMap = dynamic(() => import('@/components/live-map'), { ssr: false });
+import type { MapPoint } from '@/components/live-map';
 import { api, type ApiError } from '@/lib/api-client';
 import { formatMoney, INCIDENT_TYPE, type IncidentType } from '@chillberry/domain';
 import { Alert, Badge, EmptyState, Skeleton, type Tone } from '@/components/ui';
@@ -12,6 +16,10 @@ type DeliveryRow = {
   id: string;
   status: string;
   addressLine: string;
+  /** Destino del pedido. Puede ser null si el cliente no fijó ubicación en el
+   *  mapa (pedidos viejos, o cargados a mano). */
+  lat: number | null;
+  lng: number | null;
   deliveryFee: string;
   confirmationCode: string;
   estimatedMinutes: number | null;
@@ -37,6 +45,17 @@ type DriverRoster = {
   phone: string;
   user: { name: string };
 };
+
+type LiveDriver = {
+  id: string;
+  name: string;
+  availability: string;
+  location: { lat: string; lng: string } | null;
+};
+
+// Estados de entrega "vivos": los que tiene sentido pintar en el mapa del
+// despachador (los terminales ya no importan para asignar/seguir).
+const ACTIVE_MAP_STATUSES = new Set(['PENDING', 'DRIVER_ASSIGNED', 'ACCEPTED', 'PICKED_UP']);
 
 // --------------------------------------------------------- vocabulario
 
@@ -106,11 +125,37 @@ function formatWhen(iso: string): string {
 export function DeliveryBoard({ branchId, countryCode }: { branchId: string; countryCode: string }) {
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [drivers, setDrivers] = useState<DriverRoster[]>([]);
+  const [live, setLive] = useState<LiveDriver[]>([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const onlineDrivers = useMemo(() => drivers.filter((d) => d.availability === 'ONLINE'), [drivers]);
+
+  // Puntos del mapa del despachador: cada entrega ACTIVA con ubicación fijada
+  // (verde) + cada repartidor con posición conocida (violeta). Así el
+  // despachador ve de un vistazo qué repartidor tiene más cerca cada pedido.
+  const mapPoints = useMemo<MapPoint[]>(() => {
+    const destinos: MapPoint[] = rows
+      .filter((r) => ACTIVE_MAP_STATUSES.has(r.status) && r.lat != null && r.lng != null)
+      .map((r) => ({
+        id: `d-${r.id}`,
+        lat: r.lat!,
+        lng: r.lng!,
+        label: `${r.order.customerName ?? 'Cliente'} — ${r.addressLine}`,
+        kind: 'destino' as const,
+      }));
+    const repartidores: MapPoint[] = live
+      .filter((d) => d.location)
+      .map((d) => ({
+        id: `r-${d.id}`,
+        lat: Number(d.location!.lat),
+        lng: Number(d.location!.lng),
+        label: `${d.name} (repartidor)`,
+        kind: 'driver' as const,
+      }));
+    return [...destinos, ...repartidores];
+  }, [rows, live]);
 
   const load = useCallback(() => {
     if (!branchId) return;
@@ -121,10 +166,14 @@ export function DeliveryBoard({ branchId, countryCode }: { branchId: string; cou
     Promise.all([
       api.get<DeliveryRow[]>('/delivery', { query }),
       api.get<DriverRoster[]>('/delivery/drivers'),
+      // Posición en vivo de los repartidores (mismo endpoint que el tab
+      // Repartidores). Best-effort: si falla, el mapa muestra solo destinos.
+      api.get<LiveDriver[]>('/delivery/drivers/map').catch(() => [] as LiveDriver[]),
     ])
-      .then(([deliveries, roster]) => {
+      .then(([deliveries, roster, liveDrivers]) => {
         setRows(deliveries);
         setDrivers(roster);
+        setLive(liveDrivers);
       })
       .catch((err) => setError((err as ApiError).message))
       .finally(() => setLoading(false));
@@ -161,6 +210,22 @@ export function DeliveryBoard({ branchId, countryCode }: { branchId: string; cou
       </div>
 
       {error && <Alert tone="error">{error}</Alert>}
+
+      {/* Mapa del despachador: destinos de las entregas activas + repartidores.
+          Sólo si hay algo que mostrar — un mapa vacío es ruido. */}
+      {!loading && mapPoints.length > 0 && (
+        <div className="space-y-1">
+          <LiveMap points={mapPoints} height={260} />
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" /> Repartidor
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-ok" /> Destino del pedido
+            </span>
+          </p>
+        </div>
+      )}
 
       {loading && (
         <div className="space-y-3">
