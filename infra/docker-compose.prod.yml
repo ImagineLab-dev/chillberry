@@ -1,3 +1,7 @@
+# ⚠️ NO es el método de deploy vigente. Producción corre con DOCKER SWARM +
+# Traefik compartido — ver docs/PRODUCCION.md e infra/stack.chillberry.yml. Este
+# compose (nginx + certbot) se mantiene sólo como referencia/alternativa.
+#
 # infra/docker-compose.prod.yml — stack de producción de Chillberry.
 #
 # Uso:

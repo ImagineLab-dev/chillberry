@@ -2,8 +2,10 @@
 # SUPERSEDIDO — no lo uses. Se mantiene sólo como referencia.
 # ============================================================================
 #
-# Chillberry se despliega con EASYPANEL, que corre en el VPS y construye las
-# aplicaciones directamente desde este repo. Ver docs/DEPLOY-EASYPANEL.md.
+# Chillberry se despliega con DOCKER SWARM + Traefik compartido (el Traefik lo
+# administra EasyPanel en el VPS). El runbook REAL y vigente es docs/PRODUCCION.md
+# (deploy con `docker stack deploy -c infra/stack.chillberry.yml`). El doc
+# DEPLOY-EASYPANEL.md que se citaba acá nunca existió.
 #
 # Este workflow asume otra cosa: entrar por SSH al servidor y manejar a mano un
 # stack de docker-compose en /opt/chillberry. Eso NO es lo que hay hoy —
