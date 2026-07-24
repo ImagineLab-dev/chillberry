@@ -26,9 +26,11 @@ import { loadEnv } from '../../../config/env';
  *  - Webhook:         header `Authorization: V2-HMAC-SHA256, Signature: <hex>`,
  *                     con firma = HMAC_SHA256(apiKey + rawBody, secretKey).
  *
- * ⚠️ NO probado end-to-end desde este entorno (no hay tarjeta/sandbox/URL de
- * webhook alcanzable). Verificar en el sandbox de dLocal antes de producción.
- * PENDIENTE de completar con el sandbox: el body del webhook de dLocal es
+ * El webhook se registra POR API (`notification_url` al crear el plan) — no hace
+ * falta cargarlo a mano en el panel de dLocal.
+ *
+ * ⚠️ NO probado end-to-end desde este entorno (sin tarjeta/sandbox alcanzable).
+ * PENDIENTE de completar contra el sandbox: el body del webhook de dLocal es
  * `{ payment_id }` (NO trae el estado) — hay que hacer GET del pago para leer su
  * estado y correlacionarlo con la suscripción (por `external_id`, que se manda
  * en el subscribe_url). Ese mapeo depende de la forma real de la respuesta del
@@ -46,6 +48,16 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
       );
     }
     return { apiKey: env.DLOCAL_API_KEY, secretKey: env.DLOCAL_SECRET_KEY, base: env.DLOCAL_API_BASE };
+  }
+
+  /**
+   * URL del webhook, REGISTRADA POR API (no a mano en el panel de dLocal): se
+   * manda como `notification_url` al crear el plan. Se deriva del dominio público
+   * (primer WEB_ORIGIN) para no hardcodear el host.
+   */
+  private webhookUrl(): string {
+    const origin = loadEnv().WEB_ORIGIN.split(',')[0]!.trim().replace(/\/+$/, '');
+    return `${origin}/api/webhooks/payments/dlocal`;
   }
 
   async createSubscriptionIntent(
@@ -70,6 +82,9 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
         // 1 = una vez por mes. El adaptador no lo mandaba y el cobro habría
         // fallado en el primer intento real.
         frequency_value: 1,
+        // Webhook registrado POR API (no a mano en el panel): dLocal notifica a
+        // esta URL el cobro inicial y cada renovación.
+        notification_url: this.webhookUrl(),
       }),
     });
 
