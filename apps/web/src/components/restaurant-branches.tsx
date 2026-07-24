@@ -8,7 +8,9 @@ import { api, type ApiError } from '@/lib/api-client';
 const LocationPicker = dynamic(() => import('@/components/location-picker'), { ssr: false });
 import { Alert, Badge, Skeleton } from '@/components/ui';
 import { BranchPublicConfig } from '@/components/branch-public-config';
+import { BranchHubConfig } from '@/components/branch-hub-config';
 import { BranchScheduleEditor } from '@/components/branch-schedule-editor';
+import type { PublicHub } from '@/lib/public-hub';
 
 type Branch = {
   id: string;
@@ -29,6 +31,8 @@ type Branch = {
   // Ventana de delivery en minutos desde medianoche (null = sin restricción).
   deliveryStartMinute: number | null;
   deliveryEndMinute: number | null;
+  // "Linktree" de la sucursal (puede faltar en datos viejos → null).
+  publicHub: PublicHub | null;
 };
 
 type EditForm = {
@@ -400,6 +404,20 @@ export function RestaurantBranches({ restaurantId }: { restaurantId: string }) {
                 {isConfiguring && (
                   <div className="mt-3 space-y-6 border-t border-border pt-4">
                     <BranchPublicConfig branch={b} onSaved={() => load().catch(() => {})} />
+                    <div className="border-t border-border pt-4">
+                      <BranchHubConfig
+                        branch={{
+                          id: b.id,
+                          publicSlug: b.publicSlug,
+                          publicHub: b.publicHub ?? null,
+                          phone: b.phone,
+                          address: b.address,
+                          lat: b.lat,
+                          lng: b.lng,
+                        }}
+                        onSaved={() => load().catch(() => {})}
+                      />
+                    </div>
                     <BranchScheduleEditor branchId={b.id} />
                   </div>
                 )}

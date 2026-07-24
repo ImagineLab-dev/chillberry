@@ -54,12 +54,15 @@ export class BranchesService {
 
   async update(id: string, dto: UpdateBranchDto) {
     await this.getOrThrow(id);
-    // `cartaTheme` es un campo JSON: `null` en Prisma no borra la columna, hay
-    // que usar `Prisma.DbNull`. `undefined` (no vino) no se toca.
-    const { cartaTheme, ...rest } = dto;
+    // `cartaTheme`/`publicHub` son campos JSON: `null` en Prisma no borra la
+    // columna, hay que usar `Prisma.DbNull`. `undefined` (no vino) no se toca.
+    const { cartaTheme, publicHub, ...rest } = dto;
     const data: Prisma.BranchUpdateInput = { ...rest };
     if (cartaTheme !== undefined) {
       data.cartaTheme = cartaTheme === null ? Prisma.DbNull : (cartaTheme as Prisma.InputJsonValue);
+    }
+    if (publicHub !== undefined) {
+      data.publicHub = publicHub === null ? Prisma.DbNull : (publicHub as Prisma.InputJsonValue);
     }
     try {
       return await this.tenantPrisma.client.branch.update({ where: { id }, data });

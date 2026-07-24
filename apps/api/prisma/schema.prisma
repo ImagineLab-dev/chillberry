@@ -192,6 +192,11 @@ model Branch {
   /// portada y logo. JSON flexible; el front lo aplica con defaults seguros.
   /// Ver `CartaThemeDto`. Null = usa el look por defecto (marca del tenant).
   cartaTheme            Json?    @map("carta_theme")
+  /// "Linktree" de la sucursal: página de botones opcionales/reordenables que
+  /// ve el cliente en el link público (`/r/:slug`) cuando está activa. JSON con
+  /// `{ enabled, headline, buttons[] }`. Ver `PublicHubDto`. Null / enabled=false
+  /// = el link muestra la carta directo (comportamiento por defecto).
+  publicHub             Json?    @map("public_hub")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 

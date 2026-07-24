@@ -157,6 +157,9 @@ export class PublicMenuService {
       brandColor: branch.restaurant.tenant.brandColor,
       /** Diseño de la carta de esta sucursal (colores/font/layout/portada). */
       cartaTheme: branch.cartaTheme,
+      /** "Linktree" de la sucursal: si `enabled`, el front muestra la página de
+       *  botones antes de la carta. Null = va directo a la carta. Ver `PublicHubDto`. */
+      publicHub: branch.publicHub,
       /** Config de pedido online — el front decide qué botones mostrar. Si la
        *  sucursal está inactiva o el pedido online apagado, `canOrder` es false
        *  y la carta se ve pero no se puede pedir. */

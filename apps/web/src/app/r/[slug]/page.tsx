@@ -4,10 +4,39 @@ import dynamic from 'next/dynamic';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bike, Check, Clock, MapPin, Minus, Phone, Plus, ShoppingBag, Store, Trash2, UtensilsCrossed } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Bike,
+  Camera,
+  Check,
+  Clock,
+  FileText,
+  Globe,
+  Link2,
+  MapPin,
+  MessageCircle,
+  Minus,
+  Music2,
+  Phone,
+  Plus,
+  Share2,
+  ShoppingBag,
+  Star,
+  Store,
+  Trash2,
+  UtensilsCrossed,
+} from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
 import { formatMoney } from '@chillberry/domain';
 import { cartaThemeStyle, resolveCartaTheme, type CartaTheme } from '@/lib/carta-theme';
+import {
+  resolveHubButtons,
+  type HubButtonKind,
+  type HubCustomIcon,
+  type PublicHub,
+  type ResolvedHubButton,
+} from '@/lib/public-hub';
 import { Turnstile } from '@/components/turnstile';
 import { Alert, Badge, EmptyState, Skeleton, type Tone } from '@/components/ui';
 import { guardarPedidoEnCurso, leerPedidoEnCurso, olvidarPedidoEnCurso } from '@/lib/pedido-en-curso';
@@ -89,6 +118,9 @@ type BranchMenu = {
   /** Diseño visual configurado por la sucursal (colores/letra/layout/portada),
    *  o null si la sucursal no personalizó nada. */
   cartaTheme: CartaTheme | null;
+  /** "Linktree" de la sucursal: si `enabled`, el link muestra la página de
+   *  botones antes de la carta. Null / disabled = va directo a la carta. */
+  publicHub: PublicHub | null;
   canOrder: boolean;
   acceptsDelivery: boolean;
   acceptsPickup: boolean;
@@ -217,6 +249,10 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // Hub (Linktree) activo: el link muestra primero la página de botones. Cuando
+  // el cliente toca "Ver carta y pedir", esto pasa a true y se muestra la carta
+  // (con un botón para volver al hub). Deriva la vista sin efecto → sin parpadeo.
+  const [cartaOpened, setCartaOpened] = useState(false);
   // Búsqueda de la carta (filtra productos por nombre/descripción).
   const [menuSearch, setMenuSearch] = useState('');
   // Cupón de descuento que tipea el cliente (lo valida el server al confirmar).
@@ -679,6 +715,13 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     );
   }
 
+  // Hub (Linktree): si está activo y el cliente todavía no abrió la carta, se
+  // muestra la página de botones en vez de la carta. El botón "Ver carta y pedir"
+  // marca `cartaOpened` y cae a la carta de abajo (con un "volver" al hub).
+  if (menu.publicHub?.enabled && !cartaOpened) {
+    return <HubView menu={menu} rootStyle={rootStyle} onOpenCarta={() => setCartaOpened(true)} />;
+  }
+
   // Tema resuelto (con defaults): manda el layout, qué se muestra y la portada.
   const resolved = resolveCartaTheme(menu.cartaTheme);
   const headerLogoUrl = resolved.logoUrl ?? menu.restaurantLogoUrl;
@@ -727,6 +770,18 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
           </span>
           <span className="shrink-0 text-sm underline underline-offset-2">Ver seguimiento</span>
         </a>
+      )}
+
+      {/* Se llegó a la carta DESDE el hub de botones: dejar volver a él. */}
+      {menu.publicHub?.enabled && (
+        <button
+          type="button"
+          onClick={() => setCartaOpened(false)}
+          className="flex w-full items-center gap-2 bg-muted/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+          Volver a los botones
+        </button>
       )}
 
       {/* Portada de la sucursal según headerStyle: 'imagen' usa la foto de
@@ -1458,5 +1513,158 @@ function CustomizeSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+type IconCmp = React.ComponentType<{ className?: string }>;
+
+const HUB_KIND_ICONS: Record<HubButtonKind, IconCmp> = {
+  menu: UtensilsCrossed,
+  whatsapp: MessageCircle,
+  call: Phone,
+  map: MapPin,
+  custom: Link2,
+};
+
+// Los íconos de marca no existen en lucide 1.x → se usan glifos cercanos; la
+// etiqueta ("Instagram", "Facebook"...) es la que da el significado.
+const HUB_CUSTOM_ICONS: Record<HubCustomIcon, IconCmp> = {
+  link: Link2,
+  instagram: Camera,
+  facebook: Share2,
+  tiktok: Music2,
+  web: Globe,
+  pdf: FileText,
+  star: Star,
+};
+
+function hubIcon(b: ResolvedHubButton): IconCmp {
+  return b.kind === 'custom' ? HUB_CUSTOM_ICONS[b.icon as HubCustomIcon] : HUB_KIND_ICONS[b.kind];
+}
+
+/**
+ * "Linktree" público de la sucursal: la página de botones que se muestra cuando
+ * el hub está activo (`publicHub.enabled`). Reusa el mismo header y tema visual
+ * que la carta (portada/logo/color/letra), así queda con la identidad de marca
+ * sin configurar nada aparte. "Ver carta y pedir" no navega: cambia a la carta
+ * en la misma página (`onOpenCarta`); el resto son links (WhatsApp, mapa, redes).
+ */
+function HubView({
+  menu,
+  rootStyle,
+  onOpenCarta,
+}: {
+  menu: BranchMenu;
+  rootStyle: React.CSSProperties;
+  onOpenCarta: () => void;
+}) {
+  const resolved = resolveCartaTheme(menu.cartaTheme);
+  const headerLogoUrl = resolved.logoUrl ?? menu.restaurantLogoUrl;
+  const headerUsesCover = resolved.headerStyle === 'imagen' && !!menu.branchCoverImageUrl;
+  const headline = menu.publicHub?.headline?.trim();
+  const buttons = resolveHubButtons(menu.publicHub, {
+    phone: menu.branchPhone,
+    lat: menu.branchLat,
+    lng: menu.branchLng,
+    address: menu.branchAddress,
+  });
+
+  return (
+    <main className="min-h-screen bg-background pb-16" style={{ ...rootStyle, fontFamily: 'var(--carta-font)' }}>
+      {/* eslint-disable-next-line @next/next/no-page-custom-font -- misma carga puntual que la carta */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Oswald:wght@400;600&family=Nunito:wght@400;600;700&display=swap"
+      />
+
+      {/* Mismo header que la carta: portada/gradiente + logo + nombre. */}
+      <div
+        className={`relative h-56 w-full sm:h-64 ${resolved.headerStyle === 'solido' ? 'bg-primary' : 'brand-gradient'}`}
+        style={
+          headerUsesCover
+            ? { backgroundImage: `url(${menu.branchCoverImageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            : undefined
+        }
+      >
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/25" />
+        <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-4 pb-6">
+          {headerLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={headerLogoUrl}
+              alt={`Logo de ${menu.restaurantName}`}
+              className="mb-3 h-20 w-20 rounded-2xl border-2 border-white/90 object-cover shadow-lg"
+            />
+          ) : (
+            <Store className="mb-3 h-12 w-12 text-white drop-shadow" aria-hidden="true" />
+          )}
+          <h1 className="text-balance text-center font-heading text-3xl font-semibold tracking-tight text-white drop-shadow-md sm:text-4xl">
+            {menu.restaurantName}
+          </h1>
+          <p className="mt-0.5 text-sm text-white/90 drop-shadow">{menu.branchName}</p>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-md space-y-3 px-4 pt-5">
+        <div className="flex flex-col items-center gap-2">
+          <Badge tone={menu.isOpenNow ? 'ok' : 'error'} dot>
+            {menu.isOpenNow ? 'Abierto ahora' : 'Cerrado ahora'}
+          </Badge>
+          {headline && <p className="text-balance text-center text-sm text-muted-foreground">{headline}</p>}
+        </div>
+
+        <div className="space-y-3 pt-1">
+          {buttons.map((b) => {
+            const Icon = hubIcon(b);
+            const content = (
+              <>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1 truncate font-heading text-base font-semibold text-foreground">
+                  {b.label}
+                </span>
+                {b.external && <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+              </>
+            );
+            const cls =
+              'card flex items-center gap-3 p-3.5 transition-colors hover:border-primary active:translate-y-px';
+            // "Ver carta y pedir" no navega: abre la carta en la misma página.
+            if (b.kind === 'menu') {
+              return (
+                <button key={b.id} type="button" onClick={onOpenCarta} className={`${cls} w-full text-left`}>
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <a
+                key={b.id}
+                href={b.href!}
+                target={b.external ? '_blank' : undefined}
+                rel={b.external ? 'noopener noreferrer' : undefined}
+                className={cls}
+              >
+                {content}
+              </a>
+            );
+          })}
+
+          {/* Todos los botones apagados/sin dato: al menos dejar entrar a la carta. */}
+          {buttons.length === 0 && (
+            <button
+              type="button"
+              onClick={onOpenCarta}
+              className="card flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:border-primary"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <UtensilsCrossed className="h-5 w-5" />
+              </span>
+              <span className="font-heading text-base font-semibold text-foreground">Ver carta y pedir</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </main>
   );
 }

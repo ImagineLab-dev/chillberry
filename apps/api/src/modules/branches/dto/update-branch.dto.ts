@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CartaThemeDto } from './carta-theme.dto';
+import { PublicHubDto } from './public-hub.dto';
 
 export class UpdateBranchDto {
   @IsOptional()
@@ -107,4 +108,11 @@ export class UpdateBranchDto {
   @ValidateNested()
   @Type(() => CartaThemeDto)
   cartaTheme?: CartaThemeDto | null;
+
+  /** "Linktree" del link público (botones opcionales). `null` lo resetea. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @ValidateNested()
+  @Type(() => PublicHubDto)
+  publicHub?: PublicHubDto | null;
 }
