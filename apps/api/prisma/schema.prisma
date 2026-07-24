@@ -724,7 +724,7 @@ model Order {
   /// Clave de idempotencia opcional del cliente para deduplicar la CREACIÓN del
   /// pedido: dos POST con la misma clave (doble-click en una tablet lenta)
   /// devuelven el MISMO pedido en vez de duplicar la comanda y la cuenta.
-  idempotencyKey  String?     @unique @map("idempotency_key")
+  idempotencyKey  String?     @map("idempotency_key")
   subtotal        Decimal     @default(0) @db.Decimal(10, 2)
   taxTotal        Decimal     @default(0) @map("tax_total") @db.Decimal(10, 2)
   discountTotal   Decimal     @default(0) @map("discount_total") @db.Decimal(10, 2)
@@ -757,6 +757,9 @@ model Order {
   @@index([tenantId])
   @@index([branchId, status])
   @@index([tableId])
+  /// Idempotencia POR TENANT (no global): dos tenants pueden reusar la misma
+  /// clave sin chocar; el dedup y el catch P2002 son tenant-scoped.
+  @@unique([tenantId, idempotencyKey])
   @@map("orders")
 }
 

@@ -20,7 +20,13 @@ export class WebhooksBillingController {
   @Post('dlocal')
   @HttpCode(HttpStatus.OK)
   async handle(@Body() dto: DlocalWebhookDto, @Req() req: Request & { rawBody?: Buffer }) {
-    const signature = req.headers['x-signature'] as string | undefined;
+    // dLocal REAL manda la firma en `Authorization: V2-HMAC-SHA256, Signature: <hex>`
+    // (verificado en docs.dlocalgo.com); el mock (tests) usa `X-Signature: <hex>`.
+    // Se toma la primera presente — el adaptador activo parsea el formato que le
+    // corresponde. Sin esto el path real rechazaba el 100% de los webhooks.
+    const signature =
+      (req.headers['authorization'] as string | undefined) ??
+      (req.headers['x-signature'] as string | undefined);
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(dto));
     // `ref` (tenant) viaja en el query del notification_url que registramos por
     // API — es la correlación del webhook real de dLocal (que sólo trae payment_id).

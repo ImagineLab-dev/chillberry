@@ -506,11 +506,23 @@ export class BillingService {
       if (!this.dlocal.retrievePaymentStatus) {
         throw new BadRequestException('El proveedor activo no soporta consultar pagos de dLocal');
       }
-      const subReal = ref ? await this.prisma.subscription.findFirst({ where: { tenantId: ref } }) : null;
+      const subReal = ref
+        ? await this.prisma.subscription.findFirst({
+            where: { tenantId: ref },
+            orderBy: { createdAt: 'desc' },
+          })
+        : null;
       if (!subReal?.providerSubscriptionId) {
         throw new NotFoundException(`No se encontró una suscripción para el ref "${ref}" del webhook de dLocal`);
       }
       const pago = await this.dlocal.retrievePaymentStatus(raw.payment_id);
+      // Defensa contra un `ref` manipulado (viaja en el query, NO lo cubre la
+      // firma HMAC del body): si el pago trae nuestro external_id en `order_id`
+      // (`tenantId:planId`), se verifica que el tenant coincida con el ref. Así un
+      // webhook válido re-jugado con otro ref no aplica el pago de un tenant a otro.
+      if (pago.orderId?.includes(':') && pago.orderId.split(':')[0] !== ref) {
+        throw new BadRequestException('El pago de dLocal no corresponde al ref del webhook');
+      }
       const eventType =
         pago.status === 'PAID'
           ? 'SUBSCRIPTION_APPROVED'
