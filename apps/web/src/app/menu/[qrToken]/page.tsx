@@ -24,6 +24,10 @@ type MenuItemView = {
   description: string | null;
   price: string;
   imageUrl: string | null;
+  /** Sin stock por hoy ("86"): se muestra "Agotado" y no se puede agregar. El
+   *  backend ya lo devuelve; antes el QR lo ignoraba y el pedido fallaba recién
+   *  al confirmar ("Sin stock por hoy: X"), sin decir cuál sacar. */
+  soldOut: boolean;
   modifierGroups: ModifierGroupView[];
   /** Un combo se vende como ítem normal a precio fijo; estos campos son sólo
    *  para mostrar qué trae. No cambian cómo se agrega al carrito. */
@@ -581,7 +585,10 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
                           {/* Los productos con opciones no tienen +/− rápido: cada
                               combinación es una línea distinta, así que siempre
                               pasan por la hoja de personalización. */}
-                          {menu.canOrder &&
+                          {item.soldOut ? (
+                            <Badge tone="warn">Agotado</Badge>
+                          ) : (
+                            menu.canOrder &&
                             (hasOptions ? (
                               <button
                                 type="button"
@@ -624,7 +631,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
                                 <Plus className="h-4 w-4" />
                                 Agregar
                               </button>
-                            ))}
+                            )))}
                         </div>
                       </div>
                     </div>
