@@ -245,18 +245,18 @@ mucho 15 minutos después.
 ## Lo que queda pendiente
 
 - **Rotar las credenciales** que pasaron por chat (API de Hostinger, root SSH,
-  token de Emails, buzón, secret de Turnstile).
+  token de Emails, buzón, secret de Turnstile, **y las claves de dLocal**).
 - **Sin monitoreo de errores**: no hay Sentry. Si algo revienta en producción,
   te enterás por el cliente.
 - **Pagos con tarjeta del comensal**: sólo existe el adaptador simulado. Efectivo
   es lo único real.
-- **El cobro de las suscripciones NO está activo.** `BILLING_PROVIDER=mock` y
-  `DLOCAL_API_BASE` apunta al sandbox, así que hoy ningún restaurante paga nada.
-  La lógica está arreglada y probada contra el proveedor simulado (renovación
-  mensual con factura por período, upgrades que pasan por el cobro), pero
-  **nunca salió un request real contra dLocal, ni siquiera en su sandbox**.
-  Para activarlo: `BILLING_PROVIDER=dlocal`, las dos claves, y recién cuando
-  esté probado en sandbox, mover `DLOCAL_API_BASE` al host de producción.
+- **El cobro de suscripciones está ACTIVO con dLocal (24/07/2026).**
+  `BILLING_PROVIDER=dlocal` + `DLOCAL_API_BASE=https://api.dlocalgo.com` (prod),
+  con las dos claves reales en `.env.prod`. El plan se crea por API y el webhook
+  se registra solo vía `notification_url` (no hay que cargarlo a mano en el panel).
+  **PENDIENTE: la primera prueba real punta-a-punta** — un pago con tarjeta que
+  dispare el webhook y active la suscripción. Hasta que eso ocurra una vez, el
+  cobro no está confirmado contra el proveedor real.
 > **RESUELTO (21/07/2026):** el link de tracking ahora usa `trackingToken` propio (migración `20260721170000_delivery_tracking_token`; ver `tracking.controller.ts`) y el token se redacta de las respuestas de staff/driver. Lo de abajo queda como registro histórico.
 
 - **El repartidor puede auto-calificarse 5/5.** El link de seguimiento usa la
