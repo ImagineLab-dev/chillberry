@@ -22,6 +22,9 @@ export class WebhooksBillingController {
   async handle(@Body() dto: DlocalWebhookDto, @Req() req: Request & { rawBody?: Buffer }) {
     const signature = req.headers['x-signature'] as string | undefined;
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(dto));
-    return this.billing.processWebhook('dlocal', rawBody, signature, dto);
+    // `ref` (tenant) viaja en el query del notification_url que registramos por
+    // API — es la correlación del webhook real de dLocal (que sólo trae payment_id).
+    const ref = typeof req.query.ref === 'string' ? req.query.ref : undefined;
+    return this.billing.processWebhook('dlocal', rawBody, signature, dto, ref);
   }
 }

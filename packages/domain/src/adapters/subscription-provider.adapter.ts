@@ -17,9 +17,21 @@ export type CreateSubscriptionIntentResult = {
   redirectUrl?: string;
 };
 
+export type ProviderPaymentStatus = {
+  /** Estado del proveedor. dLocal Go: PENDING | PAID | REJECTED | CANCELLED | EXPIRED. */
+  status: string;
+  /** Referencia del comercio en el pago (`order_id` de dLocal), si viene. */
+  orderId: string | null;
+};
+
 export interface SubscriptionProviderAdapter {
   createSubscriptionIntent(input: CreateSubscriptionIntentInput): Promise<CreateSubscriptionIntentResult>;
 
   /** Valida la firma de un webhook entrante contra el body crudo (Buffer, no el JSON re-serializado). */
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
+
+  /** Consulta el estado de un pago por id. dLocal manda SÓLO `payment_id` en el
+   *  webhook (sin el estado), así que hay que consultarlo por API. Opcional: el
+   *  proveedor mock manda el evento ya normalizado y no lo necesita. */
+  retrievePaymentStatus?(paymentId: string): Promise<ProviderPaymentStatus>;
 }

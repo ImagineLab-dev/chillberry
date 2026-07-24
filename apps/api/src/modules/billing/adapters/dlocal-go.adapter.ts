@@ -55,12 +55,38 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
    * manda como `notification_url` al crear el plan. Se deriva del dominio público
    * (primer WEB_ORIGIN) para no hardcodear el host.
    */
-  private webhookUrl(): string {
+  private webhookUrl(ref: string): string {
     const origin = loadEnv().WEB_ORIGIN.split(',')[0]!.trim().replace(/\/+$/, '');
     // Webhook de SUSCRIPCIONES (SAAS_BILLING) → WebhooksBillingController
-    // (`/webhooks/dlocal`). NO el de pagos de pedidos (`/webhooks/payments/:provider`,
-    // scope CUSTOMER_PAYMENT): son endpoints distintos aunque compartan proveedor.
-    return `${origin}/api/webhooks/dlocal`;
+    // (`/webhooks/dlocal`). NO el de pagos de pedidos (`/webhooks/payments/:provider`).
+    //
+    // Correlación: el webhook de dLocal trae SÓLO `payment_id`, sin referencia a
+    // NUESTRA suscripción, y el pago tampoco la trae (su `order_id` lo genera
+    // dLocal). Como el `notification_url` es por-plan y creamos un plan por
+    // suscripción, embebemos el `ref` (el tenant — una suscripción por tenant)
+    // para reencontrar la suscripción cuando llega el aviso.
+    const url = new URL(`${origin}/api/webhooks/dlocal`);
+    url.searchParams.set('ref', ref);
+    return url.toString();
+  }
+
+  /**
+   * Estado de un pago (dLocal Go: GET /v1/payments/:id). El webhook trae sólo el
+   * `payment_id`; acá se lee el `status` (PENDING|PAID|REJECTED|CANCELLED|EXPIRED)
+   * y el `order_id`. Auth Bearer `{apiKey}:{secretKey}`, igual que crear el plan.
+   */
+  async retrievePaymentStatus(paymentId: string): Promise<{ status: string; orderId: string | null }> {
+    const { apiKey, secretKey, base } = this.credentials();
+    const res = await fetch(`${base}/v1/payments/${encodeURIComponent(paymentId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}:${secretKey}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      this.logger.error(`dLocal Go retrievePaymentStatus ${res.status}: ${text}`);
+      throw new Error(`No se pudo consultar el pago de dLocal (${res.status})`);
+    }
+    const pago = (await res.json()) as { status?: string; order_id?: string };
+    return { status: String(pago.status ?? '').toUpperCase(), orderId: pago.order_id ?? null };
   }
 
   async createSubscriptionIntent(
@@ -86,8 +112,9 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
         // fallado en el primer intento real.
         frequency_value: 1,
         // Webhook registrado POR API (no a mano en el panel): dLocal notifica a
-        // esta URL el cobro inicial y cada renovación.
-        notification_url: this.webhookUrl(),
+        // esta URL el cobro inicial y cada renovación. Lleva el `ref` del tenant
+        // para correlacionar el aviso (que sólo trae payment_id) con la suscripción.
+        notification_url: this.webhookUrl(input.tenantId),
       }),
     });
 

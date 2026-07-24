@@ -426,14 +426,28 @@ export class BillingService {
     provider: string,
     rawBody: Buffer,
     signatureHeader: string | undefined,
-    body: { eventId: string; eventType: string; providerSubscriptionId: string },
+    raw: {
+      // Forma REAL de dLocal: sólo el id del pago (el estado se consulta por API).
+      payment_id?: string;
+      // Forma del MOCK: el evento ya normalizado.
+      eventId?: string;
+      eventType?: string;
+      providerSubscriptionId?: string;
+    },
+    // `ref` (query del notification_url) = tenant, para correlacionar el aviso
+    // real de dLocal (que sólo trae payment_id) con la suscripción.
+    ref?: string,
   ) {
     if (provider !== 'dlocal') throw new BadRequestException(`Proveedor "${provider}" no soportado`);
 
     const signatureValid = this.dlocal.verifyWebhookSignature(rawBody, signatureHeader);
 
+    // Id del evento para idempotencia: el `payment_id` real, o el `eventId` del mock.
+    const eventId = raw.payment_id ?? raw.eventId;
+    if (!eventId) throw new BadRequestException('Webhook de dLocal sin identificador de evento');
+
     const existing = await this.prisma.paymentWebhookEvent.findUnique({
-      where: { provider_eventId: { provider, eventId: body.eventId } },
+      where: { provider_eventId: { provider, eventId } },
     });
     if (existing?.processedAt) {
       return { ok: true, duplicate: true };
@@ -441,14 +455,14 @@ export class BillingService {
 
     if (!signatureValid) {
       await this.prisma.paymentWebhookEvent.upsert({
-        where: { provider_eventId: { provider, eventId: body.eventId } },
-        update: { payload: body, signatureValid: false },
+        where: { provider_eventId: { provider, eventId } },
+        update: { payload: raw, signatureValid: false },
         create: {
           scope: 'SAAS_BILLING',
           provider,
-          eventId: body.eventId,
-          eventType: body.eventType,
-          payload: body,
+          eventId,
+          eventType: raw.eventType ?? 'PAYMENT',
+          payload: raw,
           signatureValid: false,
         },
       });
@@ -456,14 +470,14 @@ export class BillingService {
     }
 
     const event = await this.prisma.paymentWebhookEvent.upsert({
-      where: { provider_eventId: { provider, eventId: body.eventId } },
-      update: { payload: body, signatureValid: true },
+      where: { provider_eventId: { provider, eventId } },
+      update: { payload: raw, signatureValid: true },
       create: {
         scope: 'SAAS_BILLING',
         provider,
-        eventId: body.eventId,
-        eventType: body.eventType,
-        payload: body,
+        eventId,
+        eventType: raw.eventType ?? 'PAYMENT',
+        payload: raw,
         signatureValid: true,
       },
     });
@@ -482,6 +496,45 @@ export class BillingService {
     }
 
     try {
+
+    // Normalización del evento REAL de dLocal ({ payment_id }): ya con firma
+    // válida y el claim ganado, se consulta el estado del pago y se correlaciona
+    // la suscripción por `ref` (tenant). El mock ya viene normalizado. De acá en
+    // adelante el flujo es idéntico para ambos (usa `body`).
+    let body: { eventId: string; eventType: string; providerSubscriptionId: string };
+    if (raw.payment_id) {
+      if (!this.dlocal.retrievePaymentStatus) {
+        throw new BadRequestException('El proveedor activo no soporta consultar pagos de dLocal');
+      }
+      const subReal = ref ? await this.prisma.subscription.findFirst({ where: { tenantId: ref } }) : null;
+      if (!subReal?.providerSubscriptionId) {
+        throw new NotFoundException(`No se encontró una suscripción para el ref "${ref}" del webhook de dLocal`);
+      }
+      const pago = await this.dlocal.retrievePaymentStatus(raw.payment_id);
+      const eventType =
+        pago.status === 'PAID'
+          ? 'SUBSCRIPTION_APPROVED'
+          : ['REJECTED', 'CANCELLED', 'EXPIRED'].includes(pago.status)
+            ? 'SUBSCRIPTION_FAILED'
+            : null;
+      if (!eventType) {
+        // Estado NO terminal (PENDING): todavía no hay nada que aplicar. Se libera
+        // el claim para que el reintento de dLocal (cada 10 min) lo reprocese
+        // cuando el pago llegue a un estado final.
+        await this.prisma.paymentWebhookEvent.updateMany({
+          where: { id: event.id },
+          data: { processedAt: null },
+        });
+        return { ok: true, pending: true };
+      }
+      body = { eventId, eventType, providerSubscriptionId: subReal.providerSubscriptionId };
+    } else {
+      body = {
+        eventId,
+        eventType: raw.eventType!,
+        providerSubscriptionId: raw.providerSubscriptionId!,
+      };
+    }
 
     // Se resuelve por la SUSCRIPCIÓN, no por una factura. El webhook trae el id
     // de la suscripción y llega una vez por mes; buscar una factura con ese id
