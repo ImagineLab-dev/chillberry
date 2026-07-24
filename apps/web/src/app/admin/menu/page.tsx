@@ -658,8 +658,9 @@ export default function MenuPage() {
                 min="0"
                 value={itemCost}
                 onChange={(e) => setItemCost(e.target.value)}
-                placeholder="Costo (opcional)"
+                placeholder="Costo de hacerlo (opcional)"
                 aria-label="Costo de producción (opcional)"
+                title="Lo que te cuesta producir el plato. Sirve para ver tu ganancia; no se le cobra al cliente."
                 className="input tabular w-full sm:w-32"
               />
             </div>
@@ -791,8 +792,9 @@ export default function MenuPage() {
                         min="0"
                         value={itemEdit.cost}
                         onChange={(e) => setItemEdit((prev) => ({ ...prev, cost: e.target.value }))}
-                        placeholder="Costo (opcional)"
+                        placeholder="Costo de hacerlo (opcional)"
                         aria-label="Costo de producción (opcional)"
+                        title="Lo que te cuesta producir el plato. Sirve para ver tu ganancia; no se le cobra al cliente."
                         className="input tabular min-w-0 flex-1"
                       />
                     </div>

@@ -43,11 +43,15 @@ export class CreatePublicOrderDto {
   @Length(5, 240)
   address?: string;
 
-  @IsOptional()
+  /** Coordenadas del domicilio de entrega. OBLIGATORIAS en delivery: el mapa de
+   *  reparto, la auto-asignación de repartidor y el cálculo de envío por
+   *  distancia/zona las necesitan. En retiro se ignoran. El frontend ya las
+   *  exige (el cliente ubica el pin en el mapa); esto lo enforcea server-side. */
+  @ValidateIf((o: CreatePublicOrderDto) => o.fulfillment === 'DELIVERY')
   @IsLatitude()
   lat?: number;
 
-  @IsOptional()
+  @ValidateIf((o: CreatePublicOrderDto) => o.fulfillment === 'DELIVERY')
   @IsLongitude()
   lng?: number;
 

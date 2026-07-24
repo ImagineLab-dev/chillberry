@@ -4,6 +4,7 @@ import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
 import { KitchenService } from '../kitchen/kitchen.service';
 import { ModifiersService } from '../menu/modifiers.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { PaymentsService } from '../payments/payments.service';
 import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 
@@ -18,6 +19,9 @@ export class OrdersService {
     private readonly modifiers: ModifiersService,
     // Para registrar la merma cuando se anula un pedido ya preparado.
     private readonly inventory: InventoryService,
+    // Para cerrar un pedido de total 0 por el camino real (mesa/factura/stock/
+    // puntos) desde `updateStatus`.
+    private readonly payments: PaymentsService,
   ) {}
 
   async create(dto: CreateOrderDto, actor: ActorPedido) {
@@ -412,6 +416,15 @@ export class OrdersService {
           'Este pedido tiene saldo sin cobrar — cobralo desde la caja; al cubrir el total se completa solo.',
         );
       }
+      // Cerrar por el MISMO camino que un cobro: `checkAndCompleteOrder` libera
+      // la mesa, emite la factura, descuenta el stock y acredita los puntos, de
+      // forma atómica. Antes acá había un `order.update({status:COMPLETED})`
+      // pelado: un pedido de total 0 (cortesía 100% o pago con puntos que cubre
+      // todo el pedido) quedaba "completado" pero con la mesa OCUPADA para
+      // siempre, sin factura ni stock. Y como el cobro desde caja no admite un
+      // total 0 (exige monto >= 0.01), este era el ÚNICO cierre posible.
+      await this.payments.checkAndCompleteOrder(id);
+      return this.getOrThrow(id);
     }
 
     if (!canTransitionOrder(order.status as OrderStatus, nextStatus)) {

@@ -164,7 +164,7 @@ test.describe('seguridad: el código de entrega es un secreto del cliente', () =
   test('el staff SÍ lo ve — lo necesita para dictárselo al cliente', async ({ request }) => {
     const res = await request.get(`delivery/${deliveryId}`, { headers: authHeader(ownerToken) });
     const body = (await res.json()) as { confirmationCode: string };
-    expect(body.confirmationCode).toMatch(/^\d{4}$/);
+    expect(body.confirmationCode).toMatch(/^\d{6}$/);
   });
 
   test('y el mecanismo sigue funcionando: código malo rechaza, bueno cierra', async ({ request }) => {
@@ -259,6 +259,8 @@ async function crearDeliveryAsignadoA(
       customerName: 'E2E Seguridad',
       customerPhone: '+595981000999',
       address: 'Av. España 1234',
+      lat: -25.2867,
+      lng: -57.3333,
       items: [{ menuItemId: item.id, quantity: 1 }],
       turnstileToken: 'e2e-test-token',
     },

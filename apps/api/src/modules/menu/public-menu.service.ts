@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  computeZoneDeliveryFee,
   isBranchOpen,
   isReservedSubdomain,
   isWithinDeliveryWindow,
   localMomentInZone,
+  type DeliveryFeeType,
   type OpenState,
   type WeeklyHours,
 } from '@chillberry/domain';
@@ -104,6 +106,7 @@ export class PublicMenuService {
         restaurant: { include: { tenant: true } },
         hours: true,
         closures: true,
+        deliveryZones: { where: { active: true } },
         menuCategories: {
           where: { active: true },
           orderBy: { sortOrder: 'asc' },
@@ -161,6 +164,10 @@ export class PublicMenuService {
       acceptsDelivery: branch.acceptsDelivery,
       acceptsPickup: branch.acceptsPickup,
       deliveryFee: branch.deliveryFee,
+      /** Modelo de cobro de envío para que el front muestre el precio real:
+       *  FLAT/FIXED → `baseFee` fijo; BY_DISTANCE → se calcula con el pin del
+       *  cliente vía POST .../delivery-fee. `minOrderAmount` = pedido mínimo. */
+      deliveryPricing: this.describeDeliveryPricing(branch.deliveryFee, branch.deliveryZones),
       /** Ventana horaria del delivery (minutos desde medianoche) — el front la
        *  muestra ("envíos de 18:00 a 22:00") y decide si ofrecer delivery. */
       deliveryStartMinute: branch.deliveryStartMinute,
@@ -449,6 +456,7 @@ export class PublicMenuService {
         restaurant: { include: { tenant: true } },
         hours: true,
         closures: true,
+        deliveryZones: { where: { active: true } },
       },
     });
     if (!branch) throw new NotFoundException('Carta no encontrada');
@@ -533,7 +541,25 @@ export class PublicMenuService {
     });
 
     const isDelivery = dto.fulfillment === 'DELIVERY';
-    const fee = isDelivery ? Number(branch.deliveryFee) : 0;
+    // Envío server-side: si la sucursal tiene UNA zona activa, se cobra con ella
+    // (fija o por distancia hasta el pin del cliente); con 0 o varias (ambiguo
+    // sin áreas dibujadas), la tarifa plana. NUNCA se confía en un fee del front.
+    const pricing = this.resolvePublicDeliveryFee(
+      Number(branch.deliveryFee),
+      branch.lat != null ? Number(branch.lat) : null,
+      branch.lng != null ? Number(branch.lng) : null,
+      branch.deliveryZones,
+      isDelivery ? (dto.lat ?? null) : null,
+      isDelivery ? (dto.lng ?? null) : null,
+    );
+    const fee = isDelivery ? pricing.fee : 0;
+
+    // Pedido mínimo de la zona: si el subtotal no llega, se rechaza con el monto.
+    if (isDelivery && pricing.minOrderAmount != null && subtotal < pricing.minOrderAmount) {
+      throw new BadRequestException(
+        `El pedido mínimo para envío es ${pricing.minOrderAmount}. Agregá productos para llegar al mínimo.`,
+      );
+    }
 
     // Cupón (opcional): se valida contra el SUBTOTAL antes de crear nada, así
     // un código vencido/agotado corta el pedido con un motivo claro. El envío
@@ -591,6 +617,8 @@ export class PublicMenuService {
         fee,
         lat: dto.lat,
         lng: dto.lng,
+        zoneId: pricing.zoneId,
+        estimatedMinutes: pricing.estimatedMinutes,
       });
       // Va el TOKEN, no el id: el link del cliente no puede ser la misma clave
       // que ven el staff y el repartidor (con ella, el repartidor se calificaba
@@ -613,6 +641,129 @@ export class PublicMenuService {
       fulfillment: dto.fulfillment,
       status: order.status,
       total: order.total,
+    };
+  }
+
+  /**
+   * Fee de envío de un pedido PÚBLICO. Regla: si la sucursal tiene EXACTAMENTE
+   * UNA zona activa, se cobra con ella (fija o por distancia, ver
+   * `computeZoneDeliveryFee`). Con 0 o >1 zonas —ambiguo: las zonas no tienen
+   * área dibujada, no se puede saber en cuál cae el cliente— cae a la tarifa
+   * plana de la sucursal. Server-side: la misma cuenta la usa el preview.
+   */
+  private resolvePublicDeliveryFee(
+    flatFee: number,
+    branchLat: number | null,
+    branchLng: number | null,
+    zones: {
+      id: string;
+      feeType: DeliveryFeeType;
+      baseFee: unknown;
+      perKmFee: unknown;
+      freeKmThreshold: unknown;
+      estimatedMinutes: number;
+      minOrderAmount: unknown;
+    }[],
+    customerLat: number | null,
+    customerLng: number | null,
+  ): {
+    fee: number;
+    zoneId: string | null;
+    estimatedMinutes: number | null;
+    minOrderAmount: number | null;
+    mode: 'FLAT' | 'FIXED' | 'BY_DISTANCE';
+  } {
+    if (zones.length !== 1) {
+      return { fee: flatFee, zoneId: null, estimatedMinutes: null, minOrderAmount: null, mode: 'FLAT' };
+    }
+    const z = zones[0]!;
+    const calc = computeZoneDeliveryFee(
+      {
+        feeType: z.feeType,
+        baseFee: Number(z.baseFee),
+        perKmFee: z.perKmFee != null ? Number(z.perKmFee) : null,
+        freeKmThreshold: z.freeKmThreshold != null ? Number(z.freeKmThreshold) : null,
+        estimatedMinutes: z.estimatedMinutes,
+        minOrderAmount: z.minOrderAmount != null ? Number(z.minOrderAmount) : null,
+      },
+      branchLat,
+      branchLng,
+      customerLat,
+      customerLng,
+    );
+    return {
+      fee: calc.fee,
+      zoneId: z.id,
+      estimatedMinutes: calc.estimatedMinutes,
+      minOrderAmount: calc.minOrderAmount,
+      mode: z.feeType === 'BY_DISTANCE' ? 'BY_DISTANCE' : 'FIXED',
+    };
+  }
+
+  /** Resumen del modelo de envío para pintar el precio en la carta (sin pin todavía). */
+  private describeDeliveryPricing(
+    flatFee: unknown,
+    zones: {
+      feeType: DeliveryFeeType;
+      baseFee: unknown;
+      perKmFee: unknown;
+      freeKmThreshold: unknown;
+      estimatedMinutes: number;
+      minOrderAmount: unknown;
+    }[],
+  ): {
+    mode: 'FLAT' | 'FIXED' | 'BY_DISTANCE';
+    baseFee: number;
+    perKmFee: number | null;
+    freeKm: number | null;
+    minOrderAmount: number | null;
+    estimatedMinutes: number | null;
+  } {
+    if (zones.length !== 1) {
+      return {
+        mode: 'FLAT',
+        baseFee: Number(flatFee),
+        perKmFee: null,
+        freeKm: null,
+        minOrderAmount: null,
+        estimatedMinutes: null,
+      };
+    }
+    const z = zones[0]!;
+    return {
+      mode: z.feeType === 'BY_DISTANCE' ? 'BY_DISTANCE' : 'FIXED',
+      baseFee: Number(z.baseFee),
+      perKmFee: z.perKmFee != null ? Number(z.perKmFee) : null,
+      freeKm: z.freeKmThreshold != null ? Number(z.freeKmThreshold) : null,
+      minOrderAmount: z.minOrderAmount != null ? Number(z.minOrderAmount) : null,
+      estimatedMinutes: z.estimatedMinutes,
+    };
+  }
+
+  /**
+   * Preview del envío para el checkout: el cliente pone el pin y ve el costo
+   * real ANTES de confirmar (en BY_DISTANCE depende de la distancia). Mismo
+   * cálculo que `createPublicOrder`; la fuente de verdad sigue siendo el pedido.
+   */
+  async previewDeliveryFee(slug: string, lat: number, lng: number) {
+    const branch = await this.prisma.branch.findUnique({
+      where: { publicSlug: slug },
+      include: { deliveryZones: { where: { active: true } } },
+    });
+    if (!branch) throw new NotFoundException('Carta no encontrada');
+    const pricing = this.resolvePublicDeliveryFee(
+      Number(branch.deliveryFee),
+      branch.lat != null ? Number(branch.lat) : null,
+      branch.lng != null ? Number(branch.lng) : null,
+      branch.deliveryZones,
+      lat,
+      lng,
+    );
+    return {
+      fee: pricing.fee,
+      estimatedMinutes: pricing.estimatedMinutes,
+      minOrderAmount: pricing.minOrderAmount,
+      mode: pricing.mode,
     };
   }
 

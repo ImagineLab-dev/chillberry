@@ -84,6 +84,60 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Regla de tarifa de UNA zona de envío, ya con los Decimals convertidos a number. */
+export type DeliveryZoneRule = {
+  feeType: DeliveryFeeType;
+  baseFee: number;
+  perKmFee: number | null;
+  freeKmThreshold: number | null;
+  estimatedMinutes: number;
+  minOrderAmount: number | null;
+};
+
+export type DeliveryFeeResult = {
+  fee: number;
+  distanceKm: number | null;
+  estimatedMinutes: number;
+  minOrderAmount: number | null;
+};
+
+/**
+ * Fee de envío para una zona YA elegida. FIXED → tarifa base. BY_DISTANCE →
+ * base + km_extra × perKm, donde `km_extra` descuenta el umbral sin cargo
+ * (`freeKmThreshold`). Si es BY_DISTANCE pero faltan coordenadas (de la
+ * sucursal o del cliente), cae a la base: nunca cobra 0 por falta de datos.
+ * Redondea a 2 decimales. Definición ÚNICA del cálculo — la comparten el
+ * despacho del staff (`requestDelivery`) y el checkout público.
+ */
+export function computeZoneDeliveryFee(
+  zone: DeliveryZoneRule,
+  branchLat: number | null,
+  branchLng: number | null,
+  customerLat: number | null,
+  customerLng: number | null,
+): DeliveryFeeResult {
+  let fee = zone.baseFee;
+  let distanceKm: number | null = null;
+  if (
+    zone.feeType === 'BY_DISTANCE' &&
+    customerLat != null &&
+    customerLng != null &&
+    branchLat != null &&
+    branchLng != null
+  ) {
+    distanceKm = haversineKm(branchLat, branchLng, customerLat, customerLng);
+    const freeKm = zone.freeKmThreshold ?? 0;
+    const extraKm = Math.max(0, distanceKm - freeKm);
+    fee = zone.baseFee + extraKm * (zone.perKmFee ?? 0);
+  }
+  return {
+    fee: Math.round(fee * 100) / 100,
+    distanceKm,
+    estimatedMinutes: zone.estimatedMinutes,
+    minOrderAmount: zone.minOrderAmount,
+  };
+}
+
 /**
  * Score de desempeño de un repartidor (0-1): 60% rating, 40% tasa de
  * completado. Un repartidor sin rating todavía (recién dado de alta) usa

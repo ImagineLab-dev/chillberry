@@ -411,13 +411,13 @@ export default function SettingsPage() {
 
             <div className="space-y-2 border-t border-border pt-4">
               <label className="label" htmlFor="public-subdomain">
-                Enlace de tu carta online
+                Página de tu restaurante (todas las sucursales)
               </label>
               <p className="text-xs text-muted-foreground">
                 El escaparate de TODO tu restaurante (todas las sucursales) para la bio de
                 Instagram o WhatsApp. Elegí un nombre corto; queda como{' '}
                 <span className="tabular">tunombre.{rootDomain}</span>. La carta de pedido de UNA
-                sucursal tiene su propio enlace en <b>Restaurantes → tu sucursal → Pedido online</b>.
+                sucursal tiene su propio enlace en <b>Restaurantes → tu sucursal → Carta online</b>.
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <input

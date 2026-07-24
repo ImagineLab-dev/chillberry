@@ -15,8 +15,8 @@ export class RestaurantsController {
     return this.restaurants.create(dto);
   }
 
-  // Callers: admin/restaurants y admin/branches. Mismo alcance que el ABM de
-  // este mismo archivo (regla de catálogo: OWNER/ADMIN).
+  // Caller: admin/restaurants (la gestión de sucursales vive inline ahí, en
+  // RestaurantBranches). Mismo alcance de catálogo: OWNER/ADMIN.
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get()
   list() {

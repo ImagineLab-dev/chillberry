@@ -625,6 +625,7 @@ export default function WaiterPage() {
                       onChange={(e) =>
                         setSplitParts((parts) => parts.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x)))
                       }
+                      placeholder="Nombre (ej: Ana)"
                       aria-label={`Nombre de la persona ${idx + 1}`}
                       className="input w-32"
                     />

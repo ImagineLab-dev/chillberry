@@ -59,7 +59,7 @@ export class PosController {
   @Throttle(strictThrottle(30))
   @Post('discounts')
   applyDiscount(@Body() dto: ApplyDiscountDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.pos.applyDiscount(dto, user.id);
+    return this.pos.applyDiscount(dto, user.id, user);
   }
 
   @Throttle(strictThrottle(30))

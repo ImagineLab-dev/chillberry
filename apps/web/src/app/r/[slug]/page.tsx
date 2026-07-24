@@ -94,6 +94,16 @@ type BranchMenu = {
   acceptsPickup: boolean;
   /** Decimal-as-string, ej. "15000". */
   deliveryFee: string;
+  /** Modelo de cobro del envío: FLAT/FIXED → `baseFee` fijo; BY_DISTANCE → se
+   *  calcula con el pin del cliente (POST .../delivery-fee). */
+  deliveryPricing: {
+    mode: 'FLAT' | 'FIXED' | 'BY_DISTANCE';
+    baseFee: number;
+    perKmFee: number | null;
+    freeKm: number | null;
+    minOrderAmount: number | null;
+    estimatedMinutes: number | null;
+  };
   /** Ventana de delivery (minutos desde medianoche) + si está abierto AHORA
    *  para envíos (abierto general Y dentro de la ventana). */
   deliveryStartMinute: number | null;
@@ -218,10 +228,45 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   // Ubicación fijada en el mapa (obligatoria en delivery). Arranca null: el
   // cliente tiene que confirmar dónde queda su casa (ver LocationPicker).
   const [location, setLocation] = useState<LatLng | null>(null);
+  // Preview del envío por distancia: cuando el cliente fija el pin, el servidor
+  // devuelve el costo real (base + km) para mostrarlo ANTES de confirmar. El
+  // cobro definitivo lo recalcula el servidor al crear el pedido.
+  const [deliveryQuote, setDeliveryQuote] = useState<{
+    fee: number;
+    estimatedMinutes: number | null;
+    minOrderAmount: number | null;
+  } | null>(null);
+  useEffect(() => {
+    if (fulfillment !== 'DELIVERY' || !location || menu?.deliveryPricing.mode !== 'BY_DISTANCE') {
+      setDeliveryQuote(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .post<{ fee: number; estimatedMinutes: number | null; minOrderAmount: number | null }>(
+        `/public/menu/branch/${slug}/delivery-fee`,
+        { lat: location.lat, lng: location.lng },
+        { publicEndpoint: true },
+      )
+      .then((r) => {
+        if (!cancelled) setDeliveryQuote(r);
+      })
+      .catch(() => {
+        if (!cancelled) setDeliveryQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfillment, location, menu?.deliveryPricing.mode, slug]);
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+  // Nonce para remontar el Turnstile: su token es de UN SOLO USO, así que tras
+  // un pedido rechazado (cupón malo, sin stock, fuera de horario, pedido mínimo)
+  // hay que pedir uno nuevo — si no, el reintento choca con "token duplicado" y
+  // el cliente queda trabado (y pierde el carrito si recarga).
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
   // Producto abierto en la hoja de personalización (el que tiene opciones).
   const [customizing, setCustomizing] = useState<MenuItemView | null>(null);
   const lineIdRef = useRef(0);
@@ -401,9 +446,20 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   // de envíos de la sucursal.
   const deliveryAvailable = !!menu && menu.acceptsDelivery && menu.deliveryOpenNow;
   const deliveryWindowLabel = menu ? deliveryWindowText(menu.deliveryStartMinute, menu.deliveryEndMinute) : null;
-  const deliveryFeeNum = menu ? Number(menu.deliveryFee) : 0;
+  const pricing = menu?.deliveryPricing;
   const feeApplies = fulfillment === 'DELIVERY';
-  const displayedTotal = cartTotal + (feeApplies ? deliveryFeeNum : 0);
+  const isByDistance = pricing?.mode === 'BY_DISTANCE';
+  // Fee a mostrar: por distancia sale del preview (necesita el pin); si no, la
+  // base. `null` = todavía no lo sabemos (falta fijar la ubicación).
+  const deliveryFeeNum: number | null = !feeApplies
+    ? 0
+    : isByDistance
+      ? deliveryQuote?.fee ?? null
+      : pricing?.baseFee ?? Number(menu?.deliveryFee ?? 0);
+  const displayedTotal = cartTotal + (feeApplies && deliveryFeeNum != null ? deliveryFeeNum : 0);
+  // Pedido mínimo de la zona (viene en el GET; el preview lo confirma).
+  const minOrder = feeApplies ? deliveryQuote?.minOrderAmount ?? pricing?.minOrderAmount ?? null : null;
+  const belowMin = minOrder != null && cartTotal < minOrder;
 
   const nameOk = customerName.trim().length >= 2;
   const phoneOk = customerPhone.trim().length >= 6;
@@ -425,6 +481,11 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     addressOk &&
     locationOk &&
     deliveryTimeOk &&
+    !belowMin &&
+    // Envío por distancia: no dejar confirmar hasta tener el costo real (el
+    // preview). Si no, el Total mostraría el subtotal a secas pero el server
+    // igual cobra el envío — cobro sorpresa al recibir.
+    (!feeApplies || !isByDistance || deliveryQuote != null) &&
     !submitting;
 
   async function onConfirmOrder() {
@@ -494,6 +555,11 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
       setCartOpen(false);
     } catch (err) {
       setSubmitError((err as ApiError).message);
+      // El token de Turnstile se quemó en el intento fallido: pedí uno nuevo
+      // (remonta el widget) y limpialo, así el cliente reintenta sin recargar
+      // la página ni perder el carrito.
+      setTurnstileToken('');
+      setTurnstileNonce((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -1159,9 +1225,15 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
               </div>
               {feeApplies && (
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Envío</span>
+                  <span>Envío{isByDistance ? ' (según distancia)' : ''}</span>
                   <span className="tabular text-foreground">
-                    {deliveryFeeNum > 0 ? formatMoney(deliveryFeeNum, menu.countryCode) : 'Gratis'}
+                    {deliveryFeeNum == null
+                      ? location
+                        ? 'Calculando…'
+                        : 'Fijá tu ubicación'
+                      : deliveryFeeNum > 0
+                        ? formatMoney(deliveryFeeNum, menu.countryCode)
+                        : 'Gratis'}
                   </span>
                 </div>
               )}
@@ -1171,6 +1243,12 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                   {formatMoney(displayedTotal, menu.countryCode)}
                 </span>
               </div>
+              {belowMin && (
+                <p className="text-xs text-error-foreground">
+                  El pedido mínimo para envío es {formatMoney(minOrder!, menu.countryCode)}. Agregá
+                  productos para llegar al mínimo.
+                </p>
+              )}
             </div>
 
             {/* Cupón: el descuento lo calcula y valida el servidor al confirmar
@@ -1210,7 +1288,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
             )}
 
             <div className="mb-4 flex justify-center">
-              <Turnstile onVerify={setTurnstileToken} />
+              <Turnstile key={turnstileNonce} onVerify={setTurnstileToken} />
             </div>
 
             <div className="flex gap-2">

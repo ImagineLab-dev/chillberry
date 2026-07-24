@@ -251,7 +251,7 @@ export function RestaurantBranches({ restaurantId }: { restaurantId: string }) {
                     {b.phone && <span className="text-muted-foreground"> · {b.phone}</span>}
                     {b.publicOrderingEnabled && b.publicSlug && (
                       <span className="ml-2 align-middle">
-                        <Badge tone="info">Pedido online</Badge>
+                        <Badge tone="info">Toma pedidos</Badge>
                       </span>
                     )}
                   </div>
@@ -275,7 +275,7 @@ export function RestaurantBranches({ restaurantId }: { restaurantId: string }) {
                       aria-expanded={isConfiguring}
                     >
                       {isConfiguring ? <X className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
-                      {isConfiguring ? 'Cerrar' : 'Pedido online'}
+                      {isConfiguring ? 'Cerrar' : 'Carta online'}
                     </button>
                     <button
                       type="button"

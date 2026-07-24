@@ -854,18 +854,30 @@ export default function PosPage() {
           </Alert>
         )}
         {!session && (
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={openingAmount}
-              onChange={(e) => setOpeningAmount(e.target.value)}
-              placeholder="Efectivo inicial del cajón"
-            aria-label="Monto de apertura de la caja"
-              className="input tabular w-40"
-            />
-            <button onClick={onOpenSession} className="btn btn-primary btn-lg">
-              Abrir caja
-            </button>
+          <div className="space-y-2">
+            <div>
+              <label htmlFor="opening-amount" className="block text-sm font-medium">
+                ¿Con cuánto efectivo abrís la caja?
+              </label>
+              <p id="opening-amount-hint" className="text-xs text-muted-foreground">
+                El efectivo que ya hay en el cajón para dar vuelto. Es el punto de partida del
+                arqueo: al cerrar, el sistema lo compara contra lo que contás. Si no tenés fondo, dejá 0.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="opening-amount"
+                type="number"
+                value={openingAmount}
+                onChange={(e) => setOpeningAmount(e.target.value)}
+                placeholder="0"
+                aria-describedby="opening-amount-hint"
+                className="input tabular w-40"
+              />
+              <button onClick={onOpenSession} className="btn btn-primary btn-lg">
+                Abrir caja
+              </button>
+            </div>
           </div>
         )}
         {session && (
@@ -1041,9 +1053,9 @@ export default function PosPage() {
                     type="number"
                     value={discountValue}
                     onChange={(e) => setDiscountValue(e.target.value)}
-                    placeholder="Valor"
+                    placeholder={discountType === 'PERCENTAGE' ? '% a descontar (ej: 15)' : 'Monto a descontar'}
                     className="input tabular w-24"
-                    aria-label="Valor del descuento"
+                    aria-label={discountType === 'PERCENTAGE' ? 'Porcentaje a descontar' : 'Monto a descontar'}
                   />
                 )}
                 {/* El motivo es obligatorio: un descuento sin motivo es

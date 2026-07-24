@@ -132,6 +132,8 @@ test.describe.serial('carta pública por sucursal -> delivery / retiro -> paga a
         customerName: 'Delivery E2E',
         customerPhone: '+595981000102',
         address: 'Av. Mcal. López 1234, Asunción',
+        lat: -25.2867,
+        lng: -57.3333,
         turnstileToken: TEST_TURNSTILE_TOKEN,
         items: [{ menuItemId, quantity: 1 }],
       },
@@ -169,6 +171,20 @@ test.describe.serial('carta pública por sucursal -> delivery / retiro -> paga a
         fulfillment: 'DELIVERY',
         customerName: 'Sin Dir',
         customerPhone: '+595981000103',
+        turnstileToken: TEST_TURNSTILE_TOKEN,
+        items: [{ menuItemId, quantity: 1 }],
+      },
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test('DELIVERY sin coordenadas -> 400 (el mapa de reparto las exige)', async ({ request }) => {
+    const res = await request.post(`public/menu/branch/${slug}/order`, {
+      data: {
+        fulfillment: 'DELIVERY',
+        customerName: 'Sin Coords',
+        customerPhone: '+595981000105',
+        address: 'Av. Mcal. López 1234, Asunción',
         turnstileToken: TEST_TURNSTILE_TOKEN,
         items: [{ menuItemId, quantity: 1 }],
       },

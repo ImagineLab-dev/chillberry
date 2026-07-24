@@ -141,6 +141,20 @@ test.describe.serial('suscripción vencida = solo lectura', () => {
     expect(estado.motivo).toBe('CANCELADA');
   });
 
+  test('reactivar con el período vencido NO devuelve la escritura (bypass A5 cerrado)', async ({ request }) => {
+    // Estado heredado del test anterior: ACTIVE + cancelado + período vencido =
+    // bloqueado (CANCELADA). "Reactivar" limpia `cancelledAt`; si no lo
+    // frenáramos, la rama ACTIVE de `estadoDeBloqueo` (que tolera `renewalDate`
+    // vencida por webhook demorado) dejaría al tenant operar sin pagar, para
+    // siempre. El gate de `reactivateSubscription` tiene que rechazarlo.
+    const react = await request.post('billing/reactivate', { headers: authHeader(token) });
+    expect(react.status(), 'reactivar un período ya vencido se rechaza').toBe(400);
+
+    // Y la prueba real: la escritura sigue bloqueada. El bypass está cerrado.
+    const write = await escribir(request);
+    expect(write.status(), 'sin pago, la escritura NO vuelve').toBe(402);
+  });
+
   test('restaurada la suscripción, las escrituras vuelven al instante (sin cache)', async ({ request }) => {
     await restaurar();
     const write = await escribir(request);

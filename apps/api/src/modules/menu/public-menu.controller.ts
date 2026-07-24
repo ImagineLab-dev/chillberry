@@ -6,6 +6,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { PublicMenuService } from './public-menu.service';
 import { CreateGuestOrderDto } from './dto/create-guest-order.dto';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
+import { DeliveryFeePreviewDto } from './dto/delivery-fee-preview.dto';
 
 /**
  * Todo lo que ve/hace un cliente anónimo — SIN auth, como `TrackingController`
@@ -46,6 +47,15 @@ export class PublicMenuController {
     @Req() req: Request,
   ) {
     return this.publicMenu.createPublicOrder(slug, dto, req.ip ?? null);
+  }
+
+  // Preview del costo de envío según el pin del cliente (clave en BY_DISTANCE).
+  // No crea nada — sólo calcula, así el cliente ve el envío antes de confirmar.
+  @Public()
+  @Throttle(strictThrottle(30))
+  @Post('branch/:slug/delivery-fee')
+  previewDeliveryFee(@Param('slug') slug: string, @Body() dto: DeliveryFeePreviewDto) {
+    return this.publicMenu.previewDeliveryFee(slug, dto.lat, dto.lng);
   }
 
   @Public()

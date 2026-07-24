@@ -267,6 +267,10 @@ export default function ReservationsPage() {
     const b = await api.get<Branch[]>('/branches');
     setBranches(b);
     if (!branchId && b[0]) setBranchId(b[0].id);
+    // Sin sucursales no hay reservas que cargar: cerrar el "cargando" para no
+    // dejar los skeletons colgados para siempre en un tenant recién creado
+    // (loadReservations retorna temprano cuando no hay branchId).
+    if (b.length === 0) setLoading(false);
   }
 
   const loadTables = useCallback(async (forBranchId: string) => {

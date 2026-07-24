@@ -302,6 +302,25 @@ export class BillingService {
         'Tu suscripción ya no está activa. Escribinos a soporte@chillberry.app para reactivarla.',
       );
     }
+    // Reactivar deshace una cancelación DENTRO del período ya pagado. Si el
+    // período venció, limpiar `cancelledAt` devolvería la escritura sin cobro:
+    // la rama ACTIVE de `estadoDeBloqueo` tolera `renewalDate` vencida (por si
+    // el webhook de renovación llega tarde), así que un ACTIVE + cancelado +
+    // vencido pasaría de solo-lectura a operativo gratis, para siempre. Sólo
+    // rechazamos cuando reactivar REALMENTE levantaría el bloqueo; un TRIAL
+    // vencido, donde reactivar es inocuo (queda TRIAL_VENCIDO), sigue permitido.
+    const bloqueadaAhora = estadoDeBloqueo(sub).bloqueada;
+    const bloqueadaSiReactiva = estadoDeBloqueo({
+      status: sub.status,
+      trialEndsAt: sub.trialEndsAt,
+      cancelledAt: null,
+      renewalDate: sub.renewalDate,
+    }).bloqueada;
+    if (bloqueadaAhora && !bloqueadaSiReactiva) {
+      throw new BadRequestException(
+        'Tu período ya terminó. Reanudá tu suscripción con un pago para volver a operar.',
+      );
+    }
     return this.tenantPrisma.client.subscription.update({
       where: { id: sub.id },
       data: { cancelledAt: null },
@@ -359,6 +378,19 @@ export class BillingService {
           limit: limits.maxBranches,
         });
       }
+      // Simétrico a sucursales: bajar de plan tampoco puede dejar más usuarios
+      // activos que los que el plan nuevo permite. `assertCanCreateUser` frena el
+      // usuario N+1 al alta, pero NO mira a los que YA existen — sin esto, un
+      // tenant con 10 usuarios baja a un plan de 5 y opera con 10 pagando menos.
+      const activeUsers = await this.tenantPrisma.client.user.count({ where: { active: true } });
+      if (activeUsers > limits.maxUsers) {
+        throw new ConflictException({
+          code: 'PLAN_LIMIT_EXCEEDED',
+          message: `El plan "${plan.name}" permite hasta ${limits.maxUsers} usuario(s) activo(s), pero tenés ${activeUsers}. Desactivá usuarios antes de bajar de plan.`,
+          current: activeUsers,
+          limit: limits.maxUsers,
+        });
+      }
     }
 
     const updated = await this.tenantPrisma.client.subscription.update({
@@ -366,11 +398,14 @@ export class BillingService {
       data: {
         planId: plan.id,
         pendingPlanId: null,
-        // El estado NO se toca. Cambiar de plan no es un pago: promover a
-        // ACTIVE desde acá blanqueaba un PAST_DUE (deuda impaga) como si se
-        // hubiera cobrado. Quien mueve el estado es el webhook de cobro
-        // (`processWebhook`) o el super-admin.
-        renewalDate: addDays(new Date(), BILLING_PERIOD_DAYS),
+        // Ni el estado ni `renewalDate` se tocan. Bajar de plan NO es un pago:
+        //  - promover a ACTIVE blanquearía un PAST_DUE (deuda impaga) como si se
+        //    hubiera cobrado;
+        //  - empujar `renewalDate` +30 regalaría un mes y, peor, sacaría del
+        //    solo-lectura a un ACTIVE + cancelado + vencido (la rama `cancelledAt`
+        //    de `estadoDeBloqueo` mira `renewalDate`) → escritura gratis, repetible.
+        // El cliente conserva el período que YA pagó; el estado sólo lo mueve el
+        // webhook de cobro (`processWebhook`) o el super-admin.
       },
       include: { plan: true },
     });

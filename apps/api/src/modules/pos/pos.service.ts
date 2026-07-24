@@ -250,9 +250,15 @@ export class PosService {
 
   // ------------------------------------------------------------ descuentos
 
-  async applyDiscount(dto: ApplyDiscountDto, userId: string) {
+  async applyDiscount(dto: ApplyDiscountDto, userId: string, user: AuthenticatedUser) {
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: dto.orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // Un descuento es plata que sale: sólo lo aplica quien puede operar esa
+    // sucursal. Era el ÚNICO write de caja sin este chequeo (charge/refund/
+    // movimientos/cierre sí lo tienen) — un cajero atado a la sucursal A con el
+    // UUID de un pedido de la B podía descontarlo (cortesía 100% o canje de
+    // cupón) contra la caja de la B.
+    assertPuedeUsarSucursal(user, order.branchId);
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('No se puede aplicar un descuento a un pedido cerrado');
     }
@@ -415,7 +421,11 @@ export class PosService {
         },
       }),
       this.tenantPrisma.client.cashMovement.findMany({
-        where: { type: { in: ['PAY_IN', 'PAY_OUT'] }, session: { branchId }, ...dateFilter },
+        // REFUND incluido: un reembolso saca plata del cajón igual que un PAY_OUT
+        // y es un vector de fraude directo (cobrar en efectivo y reembolsárselo a
+        // uno mismo). Si no aparece acá, el arqueo cierra perfecto y el dueño no
+        // lo ve nunca — justo lo que este panel dice cubrir.
+        where: { type: { in: ['PAY_IN', 'PAY_OUT', 'REFUND'] }, session: { branchId }, ...dateFilter },
         orderBy: { createdAt: 'desc' },
       }),
     ]);

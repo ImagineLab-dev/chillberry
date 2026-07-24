@@ -75,7 +75,16 @@ export default function LocationPicker({
 
     mapRef.current = map;
     markerRef.current = marker;
+
+    // Leaflet fija el tamaño del mapa al crearse. Si el contenedor arranca
+    // oculto o en 0×0 —p. ej. dentro de un <details> cerrado, como en el editor
+    // de sucursal— los tiles salen grises/desalineados hasta un resize de
+    // ventana. El ResizeObserver recalcula apenas el contenedor toma tamaño real.
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(containerRef.current);
+
     return () => {
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
       markerRef.current = null;

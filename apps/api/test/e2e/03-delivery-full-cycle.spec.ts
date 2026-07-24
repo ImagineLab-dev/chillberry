@@ -118,7 +118,7 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
     // El seguimiento del cliente va por token, no por el id del delivery.
     trackingToken = delivery.trackingToken;
     expect(trackingToken).toMatch(/^[a-f0-9]{32}$/);
-    expect(confirmationCode).toMatch(/^\d{4}$/);
+    expect(confirmationCode).toMatch(/^\d{6}$/);
 
     // El auto-assign puede haber elegido CUALQUIER repartidor ONLINE del
     // tenant demo (puede haber otros de corridas manuales previas) — se

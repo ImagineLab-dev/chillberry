@@ -1,8 +1,9 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   canTransitionDelivery,
   computeDriverPerformanceScore,
+  computeZoneDeliveryFee,
   DELIVERY_TRACKABLE_STATUSES,
   haversineKm,
   rankDriverCandidates,
@@ -100,17 +101,28 @@ export class DeliveryService {
       throw new BadRequestException(`El pedido mínimo para esta zona es ${zone.minOrderAmount}`);
     }
 
-    let fee = Number(zone.baseFee);
-    let distanceKm: number | null = null;
-    if (zone.feeType === 'BY_DISTANCE' && dto.lat != null && dto.lng != null && order.branch.lat != null && order.branch.lng != null) {
-      distanceKm = haversineKm(Number(order.branch.lat), Number(order.branch.lng), dto.lat, dto.lng);
-      const freeKm = zone.freeKmThreshold ? Number(zone.freeKmThreshold) : 0;
-      const extraKm = Math.max(0, distanceKm - freeKm);
-      fee = Number(zone.baseFee) + extraKm * Number(zone.perKmFee ?? 0);
-      fee = Math.round(fee * 100) / 100;
-    }
+    const feeCalc = computeZoneDeliveryFee(
+      {
+        feeType: zone.feeType,
+        baseFee: Number(zone.baseFee),
+        perKmFee: zone.perKmFee != null ? Number(zone.perKmFee) : null,
+        freeKmThreshold: zone.freeKmThreshold != null ? Number(zone.freeKmThreshold) : null,
+        estimatedMinutes: zone.estimatedMinutes,
+        minOrderAmount: zone.minOrderAmount != null ? Number(zone.minOrderAmount) : null,
+      },
+      order.branch.lat != null ? Number(order.branch.lat) : null,
+      order.branch.lng != null ? Number(order.branch.lng) : null,
+      dto.lat ?? null,
+      dto.lng ?? null,
+    );
+    const fee = feeCalc.fee;
+    const distanceKm = feeCalc.distanceKm;
 
-    const confirmationCode = String(Math.floor(1000 + Math.random() * 9000));
+    // Código de entrega: 6 dígitos con RNG criptográfico (no `Math.random`). El
+    // repartidor lo pide al cliente para marcar DELIVERED; con 4 dígitos y RNG
+    // débil era fuerza-bruteable (9.000 combos) para marcar entregado sin pasar
+    // por la casa. 6 dígitos (900.000) + el throttle 60/min lo vuelve impráctico.
+    const confirmationCode = String(randomInt(100000, 1000000));
 
     const delivery = await this.tenantPrisma.client.delivery.create({
       data: {
@@ -180,11 +192,10 @@ export class DeliveryService {
 
   /**
    * Crea el Delivery de un pedido hecho por el cliente desde el link público
-   * de la sucursal (`/r/:slug`), donde NO hay una zona elegida: el cliente
-   * escribe su dirección a mano, no la matchea contra `DeliveryZone`. Por eso
-   * la tarifa es la plana de la sucursal (`Branch.deliveryFee`) y `zoneId`
-   * queda null — el staff puede reajustar la zona/tarifa desde el board si
-   * hace falta.
+   * de la sucursal (`/r/:slug`). La tarifa y la zona las resuelve
+   * `PublicMenuService.createPublicOrder` (fija/por distancia si la sucursal
+   * tiene UNA zona activa; la plana de la sucursal si tiene 0 o varias) y se
+   * pasan acá ya calculadas — el staff puede reajustar zona/tarifa desde el board.
    *
    * El `order.total` YA lo dejó `PublicMenuService.createPublicOrder`
    * incluyendo el envío (a diferencia de `requestDelivery`, que se llama sobre
@@ -199,9 +210,20 @@ export class DeliveryService {
    */
   async createForPublicOrder(
     orderId: string,
-    params: { addressLine: string; fee: number; lat?: number | null; lng?: number | null },
+    params: {
+      addressLine: string;
+      fee: number;
+      lat?: number | null;
+      lng?: number | null;
+      zoneId?: string | null;
+      estimatedMinutes?: number | null;
+    },
   ) {
-    const confirmationCode = String(Math.floor(1000 + Math.random() * 9000));
+    // Código de entrega: 6 dígitos con RNG criptográfico (no `Math.random`). El
+    // repartidor lo pide al cliente para marcar DELIVERED; con 4 dígitos y RNG
+    // débil era fuerza-bruteable (9.000 combos) para marcar entregado sin pasar
+    // por la casa. 6 dígitos (900.000) + el throttle 60/min lo vuelve impráctico.
+    const confirmationCode = String(randomInt(100000, 1000000));
     const order = await this.tenantPrisma.client.order.findFirst({
       where: { id: orderId },
       select: { branchId: true },
@@ -210,11 +232,12 @@ export class DeliveryService {
       data: {
         tenantId: this.tenantPrisma.tenantId,
         orderId,
+        zoneId: params.zoneId ?? undefined,
         addressLine: params.addressLine,
         lat: params.lat ?? undefined,
         lng: params.lng ?? undefined,
         deliveryFee: params.fee,
-        estimatedMinutes: await this.estimatedMinutesForBranch(order?.branchId),
+        estimatedMinutes: params.estimatedMinutes ?? (await this.estimatedMinutesForBranch(order?.branchId)),
         confirmationCode,
         trackingToken: nuevoTrackingToken(),
       },

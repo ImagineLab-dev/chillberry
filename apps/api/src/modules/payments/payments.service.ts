@@ -358,12 +358,17 @@ export class PaymentsService {
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cubreTotal = aprobado >= Number(order.total) - APPROVAL_TOLERANCE;
 
-    // Con splits, basta con que TODOS estén pagados. Pero también se cierra si
-    // el total ya se cobró sin haber elegido una parte: antes, cobrar la cuenta
-    // dividida de un saque (efectivo, sin seleccionar split) dejaba la plata
-    // adentro y el pedido trabado para siempre — sin factura, sin stock, sin
-    // liberar la mesa, e imposible de re-cobrar. El `|| cubreTotal` lo cierra.
-    const fullyPaid = order.billSplits.length > 0 ? order.billSplits.every((s) => s.paid) || cubreTotal : cubreTotal;
+    // El cierre exige DINERO REAL que cubra el total (`cubreTotal`), tenga o no
+    // splits. Antes bastaba con que TODOS los splits estuvieran `paid` — pero los
+    // splits se calculan al dividir y NO se recalculan si después cambia el total
+    // (se agrega una ronda, se aplica un descuento, se canjean puntos). Un split
+    // [50, 50] sobre un pedido que subió a 120 se pagaba entero (100) y el pedido
+    // cerraba igual: factura por 120 con 100 en el cajón — el restaurante perdía
+    // la diferencia. Confiar sólo en la plata aprobada cierra ese sub-cobro; el
+    // caso "cobré el total de un saque sin elegir parte" sigue cubierto por
+    // `cubreTotal`. Si quedan splits pagados que no llegan al total, el pedido
+    // NO cierra: el cajero cobra el saldo restante y ahí sí se completa.
+    const fullyPaid = cubreTotal;
 
     if (!fullyPaid) return;
 

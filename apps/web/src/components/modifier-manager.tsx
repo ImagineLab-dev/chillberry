@@ -347,6 +347,8 @@ export function ModifierManager({
                         type="number"
                         value={editOption.priceDelta}
                         onChange={(e) => setEditOption((o) => (o ? { ...o, priceDelta: e.target.value } : o))}
+                        placeholder="0 = gratis"
+                        title="Cuánto suma este extra al total. 0 = sin cargo."
                         className="input tabular w-24 shrink-0"
                         aria-label="Precio extra"
                       />
@@ -452,7 +454,8 @@ export function ModifierManager({
                       [group.id]: { name: d[group.id]?.name ?? '', priceDelta: e.target.value },
                     }))
                   }
-                  placeholder="0"
+                  placeholder="0 = gratis"
+                  title="Cuánto suma este extra al total. 0 = sin cargo."
                   className="input tabular w-24"
                   aria-label={`Precio extra de la nueva opción de ${group.name}`}
                 />

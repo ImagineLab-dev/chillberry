@@ -149,7 +149,7 @@ export function BranchPublicConfig({
     <form onSubmit={onSave} className="space-y-4">
       <div className="flex items-center gap-2">
         <Globe className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-        <h3 className="font-heading text-base font-semibold">Carta pública / Pedido online</h3>
+        <h3 className="font-heading text-base font-semibold">Carta online de esta sucursal</h3>
       </div>
 
       {error && <Alert tone="error">{error}</Alert>}

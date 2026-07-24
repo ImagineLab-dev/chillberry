@@ -74,10 +74,33 @@ async function bootstrap() {
   const allowedOrigins = env.WEB_ORIGIN.split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  // Hosts base de los orígenes permitidos, para habilitar TAMBIÉN sus subdominios.
+  const allowedHosts = allowedOrigins
+    .map((o) => {
+      try {
+        return new URL(o).host;
+      } catch {
+        return null;
+      }
+    })
+    .filter((h): h is string => h !== null);
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Storefronts por subdominio de tenant (`https://<tenant>.chillberry.app`):
+      // el router Traefik hace que su `/api` caiga cross-origin contra el dominio
+      // raíz, así que sin esto el preflight de la carta del subdominio se rechaza
+      // y la tienda no carga. El chequeo por SUFIJO con el punto (`.chillberry.app`)
+      // no matchea un dominio hermano tipo `evil-chillberry.app`.
+      try {
+        const host = new URL(origin).host;
+        if (allowedHosts.some((h) => host === h || host.endsWith('.' + h))) {
+          return callback(null, true);
+        }
+      } catch {
+        /* origin malformado → cae al rechazo de abajo */
+      }
       return callback(new Error('CORS: origin no permitido'), false);
     },
     credentials: true,

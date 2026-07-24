@@ -82,16 +82,21 @@ export default function BillingPage() {
   const isOwner = role === 'OWNER';
 
   async function load() {
-    const [p, s, i, f] = await Promise.all([
+    // allSettled + degradación por sección: antes un Promise.all rechazaba TODO
+    // si fallaba UN solo endpoint (p. ej. /features) → la página quedaba en
+    // blanco escondiendo lo que sí cargó. Ahora sólo un fallo de la suscripción
+    // (el dato central) se trata como error de página.
+    const [p, s, i, f] = await Promise.allSettled([
       api.get<Plan[]>('/billing/plans'),
       api.get<Subscription>('/billing/subscription'),
       api.get<SubscriptionInvoice[]>('/billing/invoices'),
       api.get<PlanFeatures>('/billing/features'),
     ]);
-    setPlans(p);
-    setSubscription(s);
-    setInvoices(i);
-    setFeatures(f);
+    if (p.status === 'fulfilled') setPlans(p.value);
+    if (i.status === 'fulfilled') setInvoices(i.value);
+    if (f.status === 'fulfilled') setFeatures(f.value);
+    if (s.status === 'rejected') throw s.reason;
+    setSubscription(s.value);
   }
 
   useEffect(() => {
@@ -355,8 +360,9 @@ export default function BillingPage() {
                 <li>{plan.features.push ? 'Avisos al teléfono incluidos' : 'Sin avisos'}</li>
               </ul>
               <button
-                disabled={isCurrent || pendingPlanId === plan.id}
+                disabled={isCurrent || pendingPlanId === plan.id || !isOwner}
                 onClick={() => onChoosePlan(plan)}
+                title={!isOwner ? 'Solo el propietario puede cambiar el plan' : undefined}
                 className={`btn mt-auto w-full ${isCurrent ? '' : 'btn-primary'}`}
               >
                 {isCurrent && <Check className="h-4 w-4" />}

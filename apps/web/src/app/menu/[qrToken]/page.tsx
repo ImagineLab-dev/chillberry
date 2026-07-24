@@ -147,6 +147,9 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+  // Nonce para remontar el Turnstile tras un pedido rechazado: el token es de un
+  // solo uso; sin esto el reintento choca con "token duplicado" y traba al cliente.
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
   // Producto abierto en la hoja de personalización (el que tiene opciones).
   const [customizing, setCustomizing] = useState<MenuItemView | null>(null);
   const lineIdRef = useRef(0);
@@ -339,6 +342,10 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
       setCartOpen(false);
     } catch (err) {
       setSubmitError((err as ApiError).message);
+      // Token quemado en el intento fallido: remonta el widget para pedir uno
+      // nuevo, así el cliente reintenta sin recargar.
+      setTurnstileToken('');
+      setTurnstileNonce((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -867,7 +874,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
             )}
 
             <div className="mb-4 flex justify-center">
-              <Turnstile onVerify={setTurnstileToken} />
+              <Turnstile key={turnstileNonce} onVerify={setTurnstileToken} />
             </div>
 
             <div className="flex gap-2">
