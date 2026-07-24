@@ -73,14 +73,46 @@ export class LoyaltyService {
     return this.tenantPrisma.client.$transaction(async (tx) => {
       const existing = await tx.loyaltyAccount.findFirst({ where: { phone: cleanPhone } });
       const current = existing?.points ?? 0;
-      const newPoints = Math.max(0, current + delta);
-      const applied = newPoints - current; // el delta REAL (por si se clampeó a 0)
 
-      const account = existing
-        ? await tx.loyaltyAccount.update({ where: { id: existing.id }, data: { points: newPoints } })
-        : await tx.loyaltyAccount.create({
-            data: { tenantId: this.tenantPrisma.tenantId, phone: cleanPhone, points: newPoints },
+      // Operaciones ATÓMICAS, nunca un valor absoluto leído antes: escribir
+      // `points: newPoints` pisaba cualquier acreditación/canje que corriera en
+      // el medio (el cliente completaba un pedido y sus puntos desaparecían).
+      //  - delta positivo → increment directo;
+      //  - delta negativo → decrement con guarda de saldo en el where; si no
+      //    matchea es que el saldo cambió (o clampearía bajo 0) → CAS de
+      //    clampeo a 0 contra el valor leído, y si TAMBIÉN falla, conflicto:
+      //    que el admin vea el saldo real y reintente.
+      let account;
+      let applied = delta;
+      if (!existing) {
+        applied = Math.max(0, delta);
+        account = await tx.loyaltyAccount.create({
+          data: { tenantId: this.tenantPrisma.tenantId, phone: cleanPhone, points: applied },
+        });
+      } else if (delta >= 0) {
+        account = await tx.loyaltyAccount.update({
+          where: { id: existing.id },
+          data: { points: { increment: delta } },
+        });
+      } else {
+        const restado = await tx.loyaltyAccount.updateMany({
+          where: { id: existing.id, points: { gte: -delta } },
+          data: { points: { decrement: -delta } },
+        });
+        if (restado.count === 0) {
+          // Saldo insuficiente para el decremento completo: clampear a 0, pero
+          // SOLO si el saldo sigue siendo el que leímos (CAS).
+          const clampeado = await tx.loyaltyAccount.updateMany({
+            where: { id: existing.id, points: current },
+            data: { points: 0 },
           });
+          if (clampeado.count === 0) {
+            throw new ConflictException('El saldo de puntos cambió mientras ajustabas — actualizá y reintentá');
+          }
+          applied = -current;
+        }
+        account = await tx.loyaltyAccount.findUniqueOrThrow({ where: { id: existing.id } });
+      }
 
       await tx.loyaltyTransaction.create({
         data: {
@@ -186,6 +218,16 @@ export class LoyaltyService {
     if (!order) throw new NotFoundException('Pedido no encontrado');
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('No se puede canjear sobre un pedido cerrado');
+    }
+    // Igual que applyDiscount: con un split ya cobrado, bajar el total no llega
+    // a los splits impagos — el cliente pagaría completo y los puntos se
+    // quemarían igual. Se bloquea antes de descontar nada.
+    const splitPago = await this.tenantPrisma.client.billSplit.findFirst({
+      where: { orderId: args.orderId, paid: true },
+      select: { id: true },
+    });
+    if (splitPago) {
+      throw new ConflictException('Este pedido ya tiene una parte cobrada — no se pueden canjear puntos sobre él');
     }
 
     const pointValue = Number(program.pointValue);

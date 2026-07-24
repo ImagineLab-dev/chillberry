@@ -33,6 +33,14 @@ export class UsersController {
     return this.users.update(id, dto, user);
   }
 
+  // Reenviar la invitación de una cuenta pendiente: rota el token (el link
+  // viejo muere) y extiende el vencimiento. 409 si la cuenta ya está activa.
+  @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
+  @Post(':id/resend-invite')
+  resendInvite(@Param('id', ParseUUIDPipe) id: string) {
+    return this.users.resendInvite(id);
+  }
+
   // Borrado DURO — solo cuando el usuario no tiene historial (pedidos, cobros,
   // entregas, auditoría). Si tiene, el service tira 409 y hay que desactivarlo.
   // Sirve para limpiar cuentas de prueba que nunca operaron.

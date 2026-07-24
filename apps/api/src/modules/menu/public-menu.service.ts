@@ -8,6 +8,7 @@ import {
   type WeeklyHours,
 } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
+import { estadoDeBloqueo } from '../billing/subscription-estado';
 import { tenantContext } from '../../common/tenant-context/tenant-context';
 import { TurnstileService } from '../../common/turnstile/turnstile.service';
 import { KitchenService } from '../kitchen/kitchen.service';
@@ -143,6 +144,11 @@ export class PublicMenuService {
       branchName: branch.name,
       branchAddress: branch.address,
       branchPhone: branch.phone,
+      /** Coordenadas de la sucursal — para centrar el mapa donde el cliente fija
+       *  su ubicación de entrega. `null` si el local nunca las cargó (el mapa
+       *  cae a un centro por defecto de la ciudad). */
+      branchLat: branch.lat != null ? Number(branch.lat) : null,
+      branchLng: branch.lng != null ? Number(branch.lng) : null,
       currency: branch.restaurant.tenant.currency,
       countryCode: branch.restaurant.tenant.countryCode,
       brandColor: branch.restaurant.tenant.brandColor,
@@ -182,12 +188,29 @@ export class PublicMenuService {
   }
 
   /**
-   * "Storefront" de un tenant por su SUBDOMINIO: `<sub>.chillberry.io`. Resuelve
+   * "Storefront" de un tenant por su SUBDOMINIO: `<sub>.chillberry.app`. Resuelve
    * el tenant por `publicSubdomain` (o por `slug` como fallback cómodo) y lista
    * sus sucursales publicadas (con `publicSlug`). El front del subdominio decide:
    * si hay una sola sucursal va directo a su carta `/r/:branchSlug`; si hay
    * varias, muestra un selector.
    */
+  /**
+   * Con la suscripción del tenant vencida, el staff queda en SOLO LECTURA
+   * (SubscriptionGuard) — y la puerta pública tiene que cerrarse igual, o el
+   * restaurante seguiría operando gratis por el QR. El mensaje es NEUTRO a
+   * propósito: el cliente final no tiene por qué enterarse de un problema
+   * comercial del local.
+   */
+  private async assertTenantRecibePedidos(tenantId: string): Promise<void> {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { tenantId },
+      select: { status: true, trialEndsAt: true, cancelledAt: true, renewalDate: true },
+    });
+    if (estadoDeBloqueo(sub).bloqueada) {
+      throw new BadRequestException('Este local no está recibiendo pedidos en este momento. Probá más tarde.');
+    }
+  }
+
   async getStoreBySubdomain(subdomain: string) {
     // Un subdominio reservado nunca resuelve a un tenant, aunque algún `slug`
     // autogenerado coincida (ej. un tenant llamado "Admin").
@@ -249,6 +272,7 @@ export class PublicMenuService {
       // Mesa retirada (soft-delete): su QR viejo ya no debe tomar pedidos.
       throw new BadRequestException('Esta mesa ya no está disponible');
     }
+    await this.assertTenantRecibePedidos(table.tenantId);
     if (!table.branch.active) {
       throw new BadRequestException('Esta sucursal no está aceptando pedidos en este momento');
     }
@@ -431,6 +455,7 @@ export class PublicMenuService {
     if (!branch.active || !branch.publicOrderingEnabled) {
       throw new BadRequestException('Esta sucursal no está tomando pedidos online en este momento');
     }
+    await this.assertTenantRecibePedidos(branch.tenantId);
 
     // El tipo elegido tiene que estar habilitado por la sucursal — sin esto,
     // un cliente podría forzar un delivery contra un local que sólo hace retiro

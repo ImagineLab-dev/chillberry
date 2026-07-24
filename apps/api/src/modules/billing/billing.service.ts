@@ -14,6 +14,7 @@ import {
   type SubscriptionProviderAdapter,
 } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
+import { estadoDeBloqueo, type EstadoBloqueo } from './subscription-estado';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
 import { SUBSCRIPTION_PROVIDER } from './subscription-provider.token';
 
@@ -56,6 +57,15 @@ export class BillingService {
     const plan = await this.prisma.plan.findFirst({ where: { active: true }, orderBy: { sortOrder: 'asc' } });
     if (!plan) throw new NotFoundException('No hay ningún plan activo configurado');
     return plan;
+  }
+
+  /** Para el banner: ¿el tenant está en solo-lectura y por qué? */
+  async getEstadoBloqueo(): Promise<EstadoBloqueo> {
+    const sub = await this.tenantPrisma.client.subscription.findUnique({
+      where: { tenantId: this.tenantPrisma.tenantId },
+      select: { status: true, trialEndsAt: true, cancelledAt: true, renewalDate: true },
+    });
+    return estadoDeBloqueo(sub);
   }
 
   async getMySubscription() {
@@ -183,6 +193,26 @@ export class BillingService {
 
     const sub = await this.tenantPrisma.client.subscription.findUniqueOrThrow({
       where: { tenantId: this.tenantPrisma.tenantId },
+    });
+
+    // Mismo guard que changePlan: una suspensión del super-admin no se revierte
+    // pagando desde acá — sin esto, `subscribe` era la puerta de atrás exacta
+    // que el guard de changePlan dice cerrar. CANCELLED sí puede volver a
+    // suscribirse: es el camino legítimo de "me arrepentí, quiero volver".
+    if (sub.status === 'SUSPENDED') {
+      throw new ForbiddenException(
+        'Tu suscripción está suspendida. Escribinos a soporte@chillberry.app para reactivarla.',
+      );
+    }
+
+    // Un `subscribe` previo que nunca se pagó deja su invoice PENDING colgada;
+    // el webhook paga "la PENDING más reciente", así que acumularlas vuelve
+    // ambiguo qué se está pagando. Antes de emitir un intent nuevo, las
+    // anteriores se marcan FAILED (nunca se van a pagar — el intent que las
+    // respaldaba queda reemplazado por el nuevo providerSubscriptionId).
+    await this.tenantPrisma.client.subscriptionInvoice.updateMany({
+      where: { subscriptionId: sub.id, status: 'PENDING' },
+      data: { status: 'FAILED' },
     });
 
     const intent = await this.dlocal.createSubscriptionIntent({
@@ -403,6 +433,21 @@ export class BillingService {
       },
     });
 
+    // CLAIM ATÓMICO del evento: dos entregas SIMULTÁNEAS del mismo eventId
+    // pasaban las dos el `existing?.processedAt` de arriba (read-then-act) y en
+    // la rama de renovación creaban DOS facturas del mismo período. El
+    // updateMany con `processedAt: null` en el where deja pasar a UNA sola; si
+    // el procesamiento falla, el catch de abajo lo libera para el retry.
+    const claim = await this.prisma.paymentWebhookEvent.updateMany({
+      where: { id: event.id, processedAt: null },
+      data: { processedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      return { ok: true, duplicate: true };
+    }
+
+    try {
+
     // Se resuelve por la SUSCRIPCIÓN, no por una factura. El webhook trae el id
     // de la suscripción y llega una vez por mes; buscar una factura con ese id
     // sólo acertaba el primer cobro (hay una sola factura por suscripción), y
@@ -425,6 +470,16 @@ export class BillingService {
     });
 
     if (body.eventType === 'SUBSCRIPTION_APPROVED') {
+      // RENOVACIÓN automática de una suscripción CANCELADA: se ignora. El dueño
+      // canceló; revivirla porque el proveedor mandó un cobro tardío dejaba el
+      // estado imposible ACTIVE+cancelledAt y un cobro post-cancelación. (El
+      // aviso al proveedor para que NO cobre queda pendiente de dLocal real —
+      // ver cancelSubscription.) El subscribe EXPLÍCITO (factura PENDING) sí
+      // pasa: eso es "reanudar", y más abajo limpia cancelledAt.
+      if (!pendiente && sub.cancelledAt) {
+        return { ok: true, duplicate: false };
+      }
+
       const planId = sub.pendingPlanId ?? sub.planId;
       let periodEnd: Date;
 
@@ -470,6 +525,9 @@ export class BillingService {
           status: 'ACTIVE',
           renewalDate: periodEnd,
           pastDueSince: null,
+          // Pagar un subscribe explícito ES reanudar: la cancelación programada
+          // queda sin efecto (el CTA "Reanudar/Pagar ahora" termina acá).
+          cancelledAt: null,
         },
       });
     } else if (body.eventType === 'SUBSCRIPTION_FAILED') {
@@ -487,9 +545,19 @@ export class BillingService {
 
     await this.prisma.paymentWebhookEvent.update({
       where: { id: event.id },
-      data: { processedAt: new Date(), tenantId: sub.tenantId },
+      data: { tenantId: sub.tenantId },
     });
 
     return { ok: true, duplicate: false };
+    } catch (err) {
+      // Liberar el claim: el proveedor va a reintentar el webhook y el evento
+      // tiene que poder procesarse entonces. Sin esto, un fallo transitorio
+      // (base caída un segundo) dejaba el evento marcado como procesado sin
+      // haber hecho nada.
+      await this.prisma.paymentWebhookEvent
+        .updateMany({ where: { id: event.id }, data: { processedAt: null } })
+        .catch(() => {});
+      throw err;
+    }
   }
 }

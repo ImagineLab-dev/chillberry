@@ -34,7 +34,7 @@ export class KitchenController {
     @Body() dto: UpdateTaskStatusDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.kitchen.updateTaskStatus(id, dto.status, user.id);
+    return this.kitchen.updateTaskStatus(id, dto.status, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Recall / deshacer: retrocede la tarea un paso (marcó listo/entregado por
@@ -42,6 +42,6 @@ export class KitchenController {
   @Roles(USER_ROLE.Kitchen, USER_ROLE.Owner, USER_ROLE.Admin)
   @Post('tasks/:id/recall')
   recallTask(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.kitchen.recallTask(id, user.id);
+    return this.kitchen.recallTask(id, { id: user.id, role: user.role, branchId: user.branchId });
   }
 }

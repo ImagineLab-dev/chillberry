@@ -15,11 +15,16 @@ export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
   // El mesero arma pedidos desde `app/waiter/page.tsx`; admin/orders también.
-  // El cajero no crea pedidos (cobra los que existen, vía /pos).
-  @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter)
+  // El cajero TAMBIÉN crea pedidos: la venta de mostrador ("Nueva venta" en
+  // `app/pos`) es un pedido sin mesa que se arma y se cobra en la misma caja.
+  // Sin esto, un mostrador/comida rápida obligaba a saltar a otra pantalla para
+  // arrancar la venta. El pedido queda con `waiterId` = quien lo cargó.
+  @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter, USER_ROLE.Cashier)
   @Post()
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.orders.create(dto, user.id);
+    // Se pasa el usuario entero (no sólo el id): el service usa su rol+sucursal
+    // para impedir que un empleado atado a un local cree pedidos en otro.
+    return this.orders.create(dto, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Listado transversal de la sucursal (incluye totales de todos los pedidos):
@@ -43,8 +48,9 @@ export class OrdersController {
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter)
   @Get(':id')
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.orders.getOrThrow(id);
+  get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    // Con control de sucursal: el UUID de un pedido ajeno no alcanza para verlo.
+    return this.orders.getForActor(id, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Segunda ronda a una mesa abierta ("agregame un postre"). Mismo trío que
@@ -56,7 +62,7 @@ export class OrdersController {
     @Body() dto: AddOrderItemsDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.orders.addItems(id, dto.items, user.id);
+    return this.orders.addItems(id, dto.items, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Editar la cantidad de un ítem ya enviado ("eran 2 no 3"). Mismo trío que
@@ -69,7 +75,7 @@ export class OrdersController {
     @Body() dto: UpdateOrderItemDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.orders.updateItemQuantity(id, itemId, dto.quantity, user.id);
+    return this.orders.updateItemQuantity(id, itemId, dto.quantity, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Quitar un ítem mal disparado sin cancelar todo el pedido.
@@ -80,7 +86,7 @@ export class OrdersController {
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.orders.removeItem(id, itemId, user.id);
+    return this.orders.removeItem(id, itemId, { id: user.id, role: user.role, branchId: user.branchId });
   }
 
   // Incluye CANCELLED: un solo endpoint para todas las transiciones, así que
@@ -95,6 +101,6 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.orders.updateStatus(id, dto.status, user.id, dto.reason);
+    return this.orders.updateStatus(id, dto.status, { id: user.id, role: user.role, branchId: user.branchId }, dto.reason);
   }
 }

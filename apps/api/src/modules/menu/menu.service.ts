@@ -145,7 +145,12 @@ export class MenuService {
     };
 
     const [items, options, branches, zones, coupons, ingredients, loyalty] = await Promise.all([
-      this.tenantPrisma.client.menuItem.findMany({ select: { id: true, price: true, cost: true } }),
+      // `deliveryPrice` también: es el precio por canal delivery y quedaba
+      // afuera de la conversión — tras pasar de PYG a USD, un pedido delivery
+      // seguía cobrando el monto en guaraníes como si fueran dólares.
+      this.tenantPrisma.client.menuItem.findMany({
+        select: { id: true, price: true, cost: true, deliveryPrice: true },
+      }),
       this.tenantPrisma.client.modifierOption.findMany({ select: { id: true, priceDelta: true } }),
       this.tenantPrisma.client.branch.findMany({ select: { id: true, deliveryFee: true } }),
       this.tenantPrisma.client.deliveryZone.findMany({
@@ -180,6 +185,7 @@ export class MenuService {
           data: {
             price: conv(Number(it.price)),
             ...(it.cost != null ? { cost: conv(Number(it.cost)) } : {}),
+            ...(it.deliveryPrice != null ? { deliveryPrice: conv(Number(it.deliveryPrice)) } : {}),
           },
         }),
       ),

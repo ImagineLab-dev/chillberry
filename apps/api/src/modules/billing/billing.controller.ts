@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AnyRole } from '../../common/decorators/any-role.decorator';
 import { BillingService } from './billing.service';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { ChangePlanDto } from './dto/change-plan.dto';
@@ -21,6 +22,15 @@ export class BillingController {
   // Datos de la suscripción del tenant (plan, ciclo, consumo) — información
   // comercial. Caller: `app/admin/billing/page.tsx`. Sin SUPER_ADMIN: resuelve
   // por `tenantPrisma.tenantId`, que un super admin no tiene.
+  // Estado LIVIANO para el banner de solo-lectura que se muestra en TODAS las
+  // pantallas (admin, caja, mesero, cocina, repartidor): cualquier rol. No
+  // expone datos comerciales — solo si está bloqueada y por qué.
+  @AnyRole()
+  @Get('estado')
+  getEstado() {
+    return this.billing.getEstadoBloqueo();
+  }
+
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('subscription')
   getSubscription() {

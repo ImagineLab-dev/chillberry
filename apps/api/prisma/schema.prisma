@@ -34,7 +34,7 @@ model Tenant {
   name            String
   slug            String   @unique
   /// Subdominio PÚBLICO editable para la carta compartible por marca:
-  /// `<publicSubdomain>.chillberry.io` (ej. hamburgueseria). Distinto del `slug`
+  /// `<publicSubdomain>.chillberry.app` (ej. hamburgueseria). Distinto del `slug`
   /// interno (que queda estable): el tenant puede personalizar este sin romper
   /// identificadores internos. Único global; null = todavía sin subdominio (usa
   /// los links por sucursal `/r/:branchSlug`).
@@ -93,6 +93,15 @@ model User {
   /// Anti-fuerza-bruta por CUENTA (complementa el rate-limit por IP): cuenta los
   /// logins fallidos consecutivos; al llegar al umbral se bloquea hasta
   /// `lockedUntil`. Se resetea en cada login exitoso.
+  /// Invitación por mail: si no es null, el empleado fue creado por el dueño
+  /// SIN contraseña y todavía no la fijó. El token va en el link del mail; al
+  /// aceptar, el empleado pone su clave y esto se limpia. Mientras siga con
+  /// token no puede entrar (su passwordHash es aleatorio e inservible).
+  invitationToken     String?   @unique @map("invitation_token")
+  /// Vencimiento de la invitación (7 días). Un link de mail que sirve para
+  /// siempre es una credencial eterna dando vueltas por buzones y forwards;
+  /// vencida, el dueño la reenvía desde Equipo (rota el token).
+  invitationExpiresAt DateTime? @map("invitation_expires_at")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   createdAt           DateTime  @default(now()) @map("created_at")

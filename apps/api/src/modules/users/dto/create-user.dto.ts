@@ -12,8 +12,15 @@ export class CreateUserDto {
   @Length(2, 120)
   name!: string;
 
+  /**
+   * OPCIONAL. Si viene, la cuenta se crea con esa clave y el empleado entra ya.
+   * Si se omite, se le manda una INVITACIÓN por mail para que fije su propia
+   * contraseña (ver UsersService.create). Dejar que el dueño no maneje la clave
+   * de otro es lo más sano; la opción de ponerla a mano se mantiene por rapidez.
+   */
+  @IsOptional()
   @IsStrongPassword()
-  password!: string;
+  password?: string;
 
   // OWNER y SUPER_ADMIN no se crean por acá — OWNER nace con /auth/register,
   // SUPER_ADMIN queda fuera de alcance de Fase 0 (staff interno de Chillberry).

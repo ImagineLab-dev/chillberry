@@ -7,6 +7,7 @@ import {
   type StationType,
 } from '@chillberry/domain';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
 import { NotificationsService } from '../integrations/notifications.service';
 import { KitchenGateway } from './kitchen.gateway';
 
@@ -162,12 +163,20 @@ export class KitchenService {
     });
   }
 
-  async updateTaskStatus(taskId: string, nextStatus: KitchenTaskStatus, userId: string) {
+  async updateTaskStatus(
+    taskId: string,
+    nextStatus: KitchenTaskStatus,
+    actor: { id: string; role: import('@chillberry/domain').UserRole; branchId: string | null },
+  ) {
+    const userId = actor.id;
     const task = await this.tenantPrisma.client.kitchenTask.findUnique({
       where: { id: taskId },
       include: { station: true },
     });
     if (!task) throw new NotFoundException('Tarea de cocina no encontrada');
+    // Cocina atada a un local solo avanza tareas de SU local: por id no hay
+    // filtro implicito de sucursal (mismo criterio que orders/pos/waiters).
+    assertPuedeUsarSucursal(actor, task.station.branchId);
 
     if (!canTransitionKitchenTask(task.status as KitchenTaskStatus, nextStatus)) {
       throw new ConflictException(`No se puede pasar de ${task.status} a ${nextStatus}`);
@@ -202,12 +211,16 @@ export class KitchenService {
    * PREPARING si el pedido ya no está completo. No se puede sobre un pedido
    * cerrado (cobrado o cancelado).
    */
-  async recallTask(taskId: string, _userId: string) {
+  async recallTask(
+    taskId: string,
+    actor: { id: string; role: import('@chillberry/domain').UserRole; branchId: string | null },
+  ) {
     const task = await this.tenantPrisma.client.kitchenTask.findUnique({
       where: { id: taskId },
       include: { station: true, order: { select: { status: true } } },
     });
     if (!task) throw new NotFoundException('Tarea de cocina no encontrada');
+    assertPuedeUsarSucursal(actor, task.station.branchId);
     if (task.order.status === 'COMPLETED' || task.order.status === 'CANCELLED') {
       throw new ConflictException('El pedido ya está cerrado — no se puede deshacer en cocina');
     }

@@ -2,6 +2,8 @@ import { BranchScope } from '../../common/decorators/branch-scope.decorator';
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { USER_ROLE } from '@chillberry/domain';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { MenuService } from './menu.service';
 import { CombosService } from './combos.service';
 import { ModifierAdminService } from './modifier-admin.service';
@@ -61,11 +63,19 @@ export class MenuController {
   }
 
   // El mesero necesita los productos para armar el pedido (`app/waiter`);
-  // admin/menu y admin/orders también.
-  @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter)
+  // admin/menu y admin/orders también. El cajero también: la venta de mostrador
+  // ("Nueva venta" en `app/pos`) elige productos del menú para armar el pedido.
+  @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Waiter, USER_ROLE.Cashier)
   @Get('items')
-  listItems(@BranchScope() branchId: string, @Query('includeInactive') includeInactive?: string) {
-    return this.menu.listItems(branchId, includeInactive === 'true');
+  listItems(
+    @BranchScope() branchId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    // Los productos desactivados son gestión del menú, no operación: mozo y
+    // cajero no los necesitan (no se pueden pedir) — el flag es sólo admin.
+    const esAdmin = user.role === USER_ROLE.Owner || user.role === USER_ROLE.Admin;
+    return this.menu.listItems(branchId, esAdmin && includeInactive === 'true');
   }
 
   // Reordenar productos de una sucursal. Declarado ANTES de `items/:id` para que

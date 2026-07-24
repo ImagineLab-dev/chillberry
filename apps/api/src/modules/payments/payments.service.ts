@@ -309,12 +309,19 @@ export class PaymentsService {
     }
 
     if (body.eventType === 'PAYMENT_APPROVED') {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
+      // Sólo desde PENDING/PROCESSING: un APPROVED que llega tarde (retry del
+      // proveedor) DESPUÉS de un REFUNDED/FAILED no debe resucitar el pago —
+      // volvería a contar como plata cobrada en resolveTarget y reportes. El
+      // updateMany con el estado en el where lo hace atómico: si el pago ya
+      // salió de pendiente, esto es un no-op y no se dispara ningún cierre.
+      const aprobado = await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'PROCESSING'] } },
         data: { status: 'APPROVED', paidAt: new Date() },
       });
-      await this.prisma.billSplit.updateMany({ where: { paymentId: payment.id }, data: { paid: true } });
-      await this.checkAndCompleteOrder(payment.orderId);
+      if (aprobado.count > 0) {
+        await this.prisma.billSplit.updateMany({ where: { paymentId: payment.id }, data: { paid: true } });
+        await this.checkAndCompleteOrder(payment.orderId);
+      }
     } else if (body.eventType === 'PAYMENT_FAILED') {
       await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
     } else if (body.eventType === 'PAYMENT_REFUNDED') {
@@ -379,7 +386,21 @@ export class PaymentsService {
     if (closed.count === 0) return;
 
     if (order.tableId) {
-      await this.prisma.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+      // La mesa se libera SOLO si este era su último pedido activo. Una mesa
+      // puede tener varios abiertos a la vez (el del mozo + el del QR del
+      // comensal): liberar al cobrar uno pintaba la mesa verde en el salón con
+      // la otra cuenta todavía abierta — se sentaba gente nueva encima.
+      const otrosActivos = await this.prisma.order.count({
+        where: {
+          tenantId: order.tenantId,
+          tableId: order.tableId,
+          id: { not: order.id },
+          status: { in: ['WAITING', 'ACCEPTED', 'PREPARING', 'READY'] },
+        },
+      });
+      if (otrosActivos === 0) {
+        await this.prisma.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+      }
     }
 
     await this.invoices.issueForOrder(order);

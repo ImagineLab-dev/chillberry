@@ -1,10 +1,14 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { USER_ROLE, type UserRole } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
 import { BillingService } from '../billing/billing.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { MailAdapter } from '../integrations/mail/mail.adapter';
+import { mailDeInvitacion } from '../integrations/mail/mail.templates';
+import { loadEnv } from '../../config/env';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const SAFE_SELECT = {
@@ -21,6 +25,26 @@ const SAFE_SELECT = {
   createdAt: true,
 } as const;
 
+/** Igual que SAFE_SELECT pero incluye el token para derivar `invitePending`. Se
+ *  usa internamente; el token NUNCA sale en la respuesta (ver `conInvitePending`). */
+const SELECT_CON_INVITE = { ...SAFE_SELECT, invitationToken: true } as const;
+
+/** Vida útil de una invitación. Un link de mail que sirve para siempre es una
+ *  credencial eterna dando vueltas por buzones y forwards; vencida, el dueño
+ *  la reenvía desde Equipo (rota el token). */
+const INVITACION_DIAS = 7;
+
+/** Reemplaza el token por un booleano: el front sabe que hay invitación pendiente
+ *  sin recibir el token (que es una credencial). */
+function conInvitePending<T extends { invitationToken?: string | null }>(u: T) {
+  const { invitationToken, ...resto } = u;
+  return { ...resto, invitePending: invitationToken != null };
+}
+
+function vencimientoDeInvitacion(): Date {
+  return new Date(Date.now() + INVITACION_DIAS * 24 * 60 * 60 * 1000);
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -31,6 +55,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly billing: BillingService,
+    private readonly mail: MailAdapter,
   ) {}
 
   async create(dto: CreateUserDto) {
@@ -44,8 +69,16 @@ export class UsersService {
 
     await this.validarSucursal(dto.branchId);
 
-    const passwordHash = await argon2.hash(dto.password);
-    return this.tenantPrisma.client.user.create({
+    // Con contraseña: la cuenta queda lista y el empleado entra ya.
+    // Sin contraseña: se manda una invitación por mail para que él la fije. La
+    // cuenta se crea igual, con un passwordHash aleatorio inservible y un token;
+    // no puede entrar hasta aceptar. Así el dueño no tiene que manejar la clave
+    // de otro (y no queda una clave débil elegida a las apuradas).
+    const invita = !dto.password;
+    const passwordHash = await argon2.hash(dto.password ?? randomBytes(24).toString('hex'));
+    const invitationToken = invita ? randomBytes(24).toString('hex') : null;
+
+    const creado = await this.tenantPrisma.client.user.create({
       data: {
         tenantId: this.tenantPrisma.tenantId,
         email: dto.email.toLowerCase(),
@@ -54,16 +87,92 @@ export class UsersService {
         role: dto.role,
         phone: dto.phone,
         branchId: dto.branchId ?? null,
+        invitationToken,
+        invitationExpiresAt: invita ? vencimientoDeInvitacion() : null,
       },
-      select: SAFE_SELECT,
+      select: SELECT_CON_INVITE,
+    });
+
+    if (invita && invitationToken) {
+      await this.enviarMailInvitacion(dto.email.toLowerCase(), dto.name, invitationToken);
+    }
+
+    // Un usuario DRIVER sin perfil de Driver es una cuenta rota: /driver da 404
+    // en todo, no aparece para asignarle entregas, y el delivery queda PENDING
+    // para siempre. Pasó en el primer uso real (22/07/2026): el dueño creó al
+    // repartidor desde Equipo y "no me aparece ningún repartidor".
+    if (dto.role === USER_ROLE.Driver) {
+      await this.asegurarPerfilDriver(creado.id, dto.phone ?? null);
+    }
+
+    return conInvitePending(creado);
+  }
+
+  /**
+   * Crea el perfil de Driver si no existe. Con defaults deliberadamente laxos
+   * (moto, sin chapa): el objetivo es que la cuenta FUNCIONE ya — el repartidor
+   * completa sus datos después desde su pantalla, y arranca OFFLINE hasta que
+   * él mismo se ponga disponible.
+   */
+  private async asegurarPerfilDriver(userId: string, phone: string | null): Promise<void> {
+    const existe = await this.tenantPrisma.client.driver.findFirst({ where: { userId } });
+    if (existe) return;
+    await this.tenantPrisma.client.driver.create({
+      data: {
+        tenantId: this.tenantPrisma.tenantId,
+        userId,
+        phone: phone ?? '',
+        vehicleType: 'MOTORCYCLE',
+      },
     });
   }
 
-  list() {
-    return this.tenantPrisma.client.user.findMany({
-      select: SAFE_SELECT,
+  /**
+   * Reenvía la invitación de una cuenta que todavía no la aceptó: rota el
+   * token (el link viejo muere) y extiende el vencimiento. Para "no me llegó
+   * el mail" y para invitaciones vencidas.
+   */
+  async resendInvite(id: string) {
+    const target = await this.tenantPrisma.client.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException('Usuario no encontrado');
+    if (!target.invitationToken) {
+      throw new ConflictException('Esta cuenta ya está activa — no tiene invitación pendiente');
+    }
+
+    const invitationToken = randomBytes(24).toString('hex');
+    const actualizado = await this.tenantPrisma.client.user.update({
+      where: { id },
+      data: { invitationToken, invitationExpiresAt: vencimientoDeInvitacion() },
+      select: SELECT_CON_INVITE,
+    });
+
+    await this.enviarMailInvitacion(target.email, target.name, invitationToken);
+    return conInvitePending(actualizado);
+  }
+
+  /** El mail con el link. Best-effort: si no sale, la cuenta queda creada con
+   *  su invitación pendiente y el dueño puede reenviarla; igual se loguea. */
+  private async enviarMailInvitacion(email: string, nombre: string, token: string): Promise<void> {
+    const tenant = await this.tenantPrisma.client.tenant.findFirst({
+      where: { id: this.tenantPrisma.tenantId },
+      select: { name: true },
+    });
+    const { html, text } = mailDeInvitacion({
+      restaurante: tenant?.name ?? 'tu restaurante',
+      nombre,
+      link: `${loadEnv().WEB_ORIGIN.split(',')[0]}/invitacion/${token}`,
+    });
+    await this.mail
+      .send({ to: email, subject: `Te sumaron al equipo en Chillberry`, text, html })
+      .catch(() => {});
+  }
+
+  async list() {
+    const usuarios = await this.tenantPrisma.client.user.findMany({
+      select: SELECT_CON_INVITE,
       orderBy: { createdAt: 'asc' },
     });
+    return usuarios.map(conInvitePending);
   }
 
   /**
@@ -102,13 +211,26 @@ export class UsersService {
 
     // La contraseña (reset por owner/admin) no es un campo de User: se hashea y
     // se escribe como `passwordHash`. El resto del dto va tal cual.
+    //
+    // Al fijar una contraseña se ANULA cualquier invitación pendiente
+    // (`invitationToken: null`). Sin esto, el link del mail de invitación —que
+    // no vence solo— seguía vivo para siempre: cualquiera que lo consiguiera
+    // podía pisar la clave recién puesta con `accept-invite` y quedarse con la
+    // cuenta. Fijar la clave a mano ES la otra forma de completar el alta, así
+    // que la invitación deja de tener sentido en el mismo acto.
     const { password, ...rest } = dto;
     const passwordHash = password ? await argon2.hash(password) : undefined;
     const updated = await this.tenantPrisma.client.user.update({
       where: { id },
-      data: { ...rest, ...(passwordHash ? { passwordHash } : {}) },
+      data: { ...rest, ...(passwordHash ? { passwordHash, invitationToken: null, invitationExpiresAt: null } : {}) },
       select: SAFE_SELECT,
     });
+    // Cambio de rol A repartidor: mismo criterio que en el alta — sin perfil
+    // de Driver la cuenta queda rota (404 en toda su pantalla).
+    if (dto.role === USER_ROLE.Driver) {
+      await this.asegurarPerfilDriver(id, updated.phone ?? null);
+    }
+
     // Revocar las sesiones activas. Dos motivos distintos:
     //  - cambio de contraseña: obligamos a re-login con la clave nueva (si no,
     //    un token robado seguiría vivo tras el reset);

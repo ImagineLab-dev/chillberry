@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { strictThrottle } from '../../common/security/throttle.util';
 import type { Request } from 'express';
@@ -14,6 +14,7 @@ import {
   VerifySignupDto,
 } from './dto/verification.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 import type { AuthenticatedUser } from './auth.types';
 
 @Controller('auth')
@@ -61,6 +62,27 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto);
+  }
+
+  /**
+   * Invitación al equipo: mira si el token del link sigue vigente y devuelve a
+   * quién y a qué restaurante corresponde, para que la pantalla salude por
+   * nombre. No expone nada sensible; el token ya viaja en la URL del mail.
+   */
+  @Public()
+  @Throttle(strictThrottle(20))
+  @Get('invitation/:token')
+  async getInvitation(@Param('token') token: string) {
+    return this.auth.getInvitation(token);
+  }
+
+  /** Invitación al equipo: con el token del mail, el empleado fija su clave y entra. */
+  @Public()
+  @Throttle(strictThrottle(10))
+  @Post('accept-invite')
+  @HttpCode(HttpStatus.OK)
+  async acceptInvite(@Body() dto: AcceptInviteDto, @Req() req: Request) {
+    return this.auth.acceptInvite(dto, meta(req));
   }
 
   @Public()

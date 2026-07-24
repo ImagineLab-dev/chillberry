@@ -81,6 +81,11 @@ export class DeliveryService {
 
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: orderId }, include: { branch: true } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // Un pedido cerrado no puede convertirse en delivery: sumarle el fee DESPUÉS
+    // de cobrado inflaba el total post-pago (descuadre permanente en reportes).
+    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+      throw new ConflictException('Este pedido ya está cerrado — no se le puede pedir un delivery');
+    }
 
     const existing = await this.tenantPrisma.client.delivery.findUnique({ where: { orderId } });
     if (existing) throw new ConflictException('Este pedido ya tiene un delivery asociado');
@@ -133,9 +138,14 @@ export class DeliveryService {
       });
     }
 
+    // `increment` y no `Number(order.total) + fee`: el total leído al entrar
+    // puede estar viejo si un mozo agregó una ronda en el medio — la escritura
+    // absoluta pisaba ese increment y los ítems quedaban sin cobrar. El fee se
+    // aplica una sola vez garantizado: `Delivery.orderId` es @unique, así que
+    // un segundo requestDelivery muere arriba en el ConflictException.
     await this.tenantPrisma.client.order.update({
       where: { id: orderId },
-      data: { type: 'DELIVERY', deliveryFee: fee, total: Number(order.total) + fee },
+      data: { type: 'DELIVERY', deliveryFee: fee, total: { increment: fee } },
     });
 
     await this.logEvent(delivery.id, 'DELIVERY_CREATED', { fee, distanceKm });
@@ -561,7 +571,13 @@ export class DeliveryService {
     // sólo quien hizo el pedido.
     const delivery = await this.prisma.delivery.findUnique({
       where: { trackingToken },
-      include: { driver: { include: { user: { select: { name: true } } } } },
+      // `order.status` viaja al tracking: mientras el delivery sigue PENDING,
+      // lo que el cliente quiere saber es qué pasa con su COMIDA ("lo están
+      // preparando", "ya está listo") — no un eterno "buscando repartidor".
+      include: {
+        driver: { include: { user: { select: { name: true } } } },
+        order: { select: { status: true } },
+      },
     });
     if (!delivery) throw new NotFoundException('Delivery no encontrado');
 
@@ -587,6 +603,7 @@ export class DeliveryService {
 
     return {
       status: delivery.status,
+      orderStatus: delivery.order.status,
       estimatedMinutes: delivery.estimatedMinutes,
       driverName: trackable ? (delivery.driver?.user.name ?? null) : null,
       location: trackable ? liveLocation : null,

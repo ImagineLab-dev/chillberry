@@ -1,18 +1,25 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { UserRole } from '@chillberry/domain';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
+
+type Actor = { id: string; role: UserRole; branchId: string | null };
 
 @Injectable()
 export class TablesService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  async create(dto: CreateTableDto) {
+  // Quien opera, para el control de sucursal (por id no hay filtro implicito).
+
+  async create(dto: CreateTableDto, actor: Actor) {
     const branch = await this.tenantPrisma.client.branch.findUnique({
       where: { id: dto.branchId },
     });
     if (!branch) throw new NotFoundException('Sucursal no encontrada');
+    assertPuedeUsarSucursal(actor, dto.branchId);
 
     return this.tenantPrisma.client.table.create({
       data: { ...dto, tenantId: this.tenantPrisma.tenantId, qrToken: this.generateQrToken() },
@@ -26,9 +33,10 @@ export class TablesService {
     });
   }
 
-  async getOrThrow(id: string) {
+  async getOrThrow(id: string, actor?: Actor) {
     const table = await this.tenantPrisma.client.table.findUnique({ where: { id } });
     if (!table) throw new NotFoundException('Mesa no encontrada');
+    if (actor) assertPuedeUsarSucursal(actor, table.branchId);
     return table;
   }
 
@@ -40,8 +48,8 @@ export class TablesService {
    * dueño/admin. El front recarga la lista después de editar, así que nadie
    * depende de que venga en esta respuesta.
    */
-  async update(id: string, dto: UpdateTableDto) {
-    await this.getOrThrow(id);
+  async update(id: string, dto: UpdateTableDto, actor: Actor) {
+    await this.getOrThrow(id, actor);
     return this.tenantPrisma.client.table.update({
       where: { id },
       data: dto,
@@ -55,8 +63,8 @@ export class TablesService {
    * sin cascade). Si tiene historial, 409 → hay que desactivarla. `deleteMany`
    * en vez de `delete` por el scope de tenant (mismo patrón que closures).
    */
-  async remove(id: string) {
-    await this.getOrThrow(id);
+  async remove(id: string, actor: Actor) {
+    await this.getOrThrow(id, actor);
     const [orders, reservations] = await Promise.all([
       this.tenantPrisma.client.order.count({ where: { tableId: id } }),
       this.tenantPrisma.client.reservation.count({ where: { tableId: id } }),
@@ -72,8 +80,8 @@ export class TablesService {
   }
 
   /** Rotable sin cambiar el id de la mesa — el QR físico se reimprime con el nuevo token. */
-  async rotateQr(id: string) {
-    await this.getOrThrow(id);
+  async rotateQr(id: string, actor: Actor) {
+    await this.getOrThrow(id, actor);
     return this.tenantPrisma.client.table.update({
       where: { id },
       data: { qrToken: this.generateQrToken() },

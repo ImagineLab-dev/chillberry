@@ -256,6 +256,18 @@ export class PosService {
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('No se puede aplicar un descuento a un pedido cerrado');
     }
+    // Con una parte de la cuenta YA cobrada, bajar el total descuadra todo: los
+    // splits impagos conservan su monto viejo, así que el descuento nunca se
+    // materializa (la mesa paga completo igual) y el cupón/motivo queda quemado.
+    // Mismo bloqueo que addItems/removeItem: primero se anula el pago o se
+    // cierra la cuenta, después se toca el total.
+    const splitPago = await this.tenantPrisma.client.billSplit.findFirst({
+      where: { orderId: dto.orderId, paid: true },
+      select: { id: true },
+    });
+    if (splitPago) {
+      throw new ConflictException('Este pedido ya tiene una parte cobrada — no se le pueden aplicar descuentos');
+    }
 
     const subtotal = Number(order.subtotal);
 
@@ -499,20 +511,28 @@ export class PosService {
       idempotencyKey: `${dto.idempotencyKey}:${i}`,
     }));
 
-    // Cobro TODO en efectivo: va en una transacción Serializable que revalida el
-    // saldo ADENTRO. Sin esto, dos terminales cobrando el mismo pedido en el
-    // mismo instante leían las dos "pagado 0" y registraban dos pagos completos
-    // — el cliente pagaba una vez y la caja quedaba con el doble anotado. La
-    // clave de idempotencia sólo cubre el doble click de UNA terminal, porque
-    // dos dispositivos generan claves distintas.
+    // Las líneas en EFECTIVO se aprueban al instante (nacen APPROVED y anotan
+    // CashMovement), así que van SIEMPRE dentro de una transacción Serializable
+    // que revalida el saldo ADENTRO — sea un cobro todo-efectivo o la parte
+    // cash de un cobro mixto. Sin esto, dos terminales cobrando el mismo pedido
+    // en el mismo instante leían las dos "pagado 0" y registraban el efectivo
+    // dos veces — el cliente pagaba una vez y la caja quedaba con el doble
+    // anotado. La clave de idempotencia sólo cubre el doble click de UNA
+    // terminal, porque dos dispositivos generan claves distintas.
     //
-    // Sólo el efectivo: los pagos electrónicos nacen PENDING (no suman al
-    // saldo hasta que el proveedor confirma) y su creación llama a un servicio
+    // (Antes la transacción cubría SOLO el camino todo-efectivo; el mixto
+    // creaba sus líneas cash sueltas y sin revalidar — la misma carrera que el
+    // comentario de arriba describe, reabierta por la puerta del pago mixto.)
+    //
+    // Las líneas ELECTRÓNICAS quedan afuera: nacen PENDING (no suman al saldo
+    // hasta que el proveedor confirma) y su creación llama a un servicio
     // externo, que no puede vivir dentro de una transacción.
     const allCash = dto.payments.every((p) => p.method === PAYMENT_METHOD.Cash);
-    let createdPayments;
+    const cashArgs = lineArgs.filter((a) => a.method === PAYMENT_METHOD.Cash);
+    const electronicArgs = lineArgs.filter((a) => a.method !== PAYMENT_METHOD.Cash);
+    let createdPayments: Awaited<ReturnType<typeof this.payments.createPaymentLine>>[] = [];
 
-    if (allCash) {
+    if (cashArgs.length > 0) {
       try {
         createdPayments = await this.prisma.$transaction(
           async (tx) => {
@@ -521,13 +541,27 @@ export class PosService {
               where: { orderId, tenantId: this.tenantPrisma.tenantId, status: 'APPROVED' },
             });
             const yaPagado = Number(prev._sum.amount ?? 0);
-            if (yaPagado + sum > Number(order.total) + CHARGE_TOLERANCE) {
+            // El total se RELEE adentro de la transacción: el `order.total` de
+            // afuera puede estar viejo si un canje de puntos o descuento corrió
+            // entre que el cajero abrió el cobro y confirmó — validar contra el
+            // valor viejo dejaba cobrar de más (y encima con los puntos ya
+            // quemados). El where lleva tenantId porque `tx` es el cliente
+            // crudo, sin scope automático.
+            const fresco = await tx.order.findFirst({
+              where: { id: orderId, tenantId: this.tenantPrisma.tenantId },
+              select: { total: true },
+            });
+            if (!fresco) throw new ConflictException('El pedido ya no existe');
+            // Se revalida contra el COBRO COMPLETO (`sum`, cash + electrónico):
+            // si este intento entero no cabe en lo que falta pagar, tampoco
+            // tiene sentido dejar entrar sólo su parte en efectivo.
+            if (yaPagado + sum > Number(fresco.total) + CHARGE_TOLERANCE) {
               throw new ConflictException(
                 'Este pedido ya fue cobrado desde otra terminal — actualizá la lista antes de volver a cobrar.',
               );
             }
             const out = [];
-            for (const args of lineArgs) {
+            for (const args of cashArgs) {
               out.push(await this.payments.createPaymentLine(args, tx));
             }
             return out;
@@ -556,14 +590,19 @@ export class PosService {
         }
         throw err;
       }
+    }
+
+    // Intents electrónicos, DESPUÉS del efectivo ya asegurado. La idempotencia
+    // por línea (`${key}:${i}`) hace el retry seguro si esto falla a mitad.
+    for (const args of electronicArgs) {
+      createdPayments.push(await this.payments.createPaymentLine(args));
+    }
+
+    if (allCash) {
       // Fuera de la transacción: emite factura, descuenta stock y acredita
-      // puntos. Tiene su propia guarda para no correr dos veces.
+      // puntos. Tiene su propia guarda para no correr dos veces. En un cobro
+      // mixto el cierre lo dispara el webhook cuando el proveedor aprueba.
       await this.payments.checkAndCompleteOrder(orderId);
-    } else {
-      createdPayments = [];
-      for (const args of lineArgs) {
-        createdPayments.push(await this.payments.createPaymentLine(args));
-      }
     }
 
     const refreshedOrder = await this.tenantPrisma.client.order.findUnique({ where: { id: orderId } });

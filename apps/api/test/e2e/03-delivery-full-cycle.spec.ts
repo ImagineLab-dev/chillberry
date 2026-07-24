@@ -92,11 +92,14 @@ test.describe.serial('delivery: asignación -> aceptar -> recoger -> entregar ->
     request,
   }) => {
     const menuItem = await getFirstMenuItem(request, ownerToken, branchId);
+    // Flujo REAL: el pedido nace normal (sin mesa → TAKEAWAY) y se convierte a
+    // DELIVERY con `requestDelivery`, que crea el registro con dirección, zona
+    // y fee. Mandar `type: 'DELIVERY'` directo a POST /orders hoy se rechaza
+    // (dejaba un pedido delivery huérfano, sin dirección ni repartidor).
     const orderRes = await request.post('orders', {
       headers: authHeader(ownerToken),
       data: {
         branchId,
-        type: 'DELIVERY',
         customerPhone: '+595981555000',
         items: [{ menuItemId: menuItem.id, quantity: 1 }],
       },

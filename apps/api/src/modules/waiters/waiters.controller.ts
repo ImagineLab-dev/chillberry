@@ -20,27 +20,32 @@ export class WaitersController {
   }
 
   @Post('tables/:id/open')
-  openTable(@Param('id', ParseUUIDPipe) id: string) {
-    return this.waiters.openTable(id);
+  openTable(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.waiters.openTable(id, actorDe(user));
   }
 
   @Post('tables/transfer')
   transfer(@Body() dto: TransferTableDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.waiters.transfer(dto, user.id);
+    return this.waiters.transfer(dto, actorDe(user));
   }
 
   @Post('tables/merge')
   merge(@Body() dto: MergeTablesDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.waiters.merge(dto, user.id);
+    return this.waiters.merge(dto, actorDe(user));
   }
 
   @Post('orders/:id/request-bill')
-  requestBill(@Param('id', ParseUUIDPipe) id: string) {
-    return this.waiters.requestBill(id);
+  requestBill(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.waiters.requestBill(id, actorDe(user));
   }
 
   @Post('orders/:id/split')
-  split(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SplitOrderDto) {
-    return this.waiters.split(id, dto);
+  split(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SplitOrderDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.waiters.split(id, dto, actorDe(user));
   }
+}
+
+/** Rol + sucursal del JWT: lo que el service necesita para el control por id. */
+function actorDe(user: AuthenticatedUser) {
+  return { id: user.id, role: user.role, branchId: user.branchId };
 }

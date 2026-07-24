@@ -154,6 +154,73 @@ export function mailDeCodigo(input: MailCodigoInput): { html: string; text: stri
   return { html, text };
 }
 
+export interface MailInvitacionInput {
+  /** Nombre del restaurante que invita. */
+  restaurante: string;
+  /** Nombre del empleado invitado. */
+  nombre: string;
+  /** Link para fijar la contraseña (`${WEB_ORIGIN}/invitacion/<token>`). */
+  link: string;
+}
+
+/**
+ * Mail de invitación al equipo. En vez de un código, lleva un botón/link para
+ * que el empleado fije SU propia contraseña — así el dueño nunca maneja la clave
+ * de otro. El token va en la URL; no hay nada secreto en el cuerpo del mail.
+ */
+export function mailDeInvitacion(input: MailInvitacionInput): { html: string; text: string } {
+  const { restaurante, nombre, link } = input;
+  const titulo = `Te sumaron al equipo de ${restaurante}`;
+  const bajada = `${nombre}, creá tu contraseña para empezar a usar Chillberry.`;
+
+  const text =
+    `${titulo}\n\n${bajada}\n\n` +
+    `Entrá y creá tu contraseña acá:\n${link}\n\n` +
+    `Si no esperabas esta invitación, ignorá este correo.\n\n` +
+    `Chillberry — el sistema de tu restaurante\n` +
+    `Este correo se envió automáticamente. No hace falta responderlo.`;
+
+  const html = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapar(titulo)}</title>
+</head>
+<body style="margin:0;padding:0;background:${FONDO};">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapar(bajada)}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${FONDO};padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border-radius:16px;border:1px solid ${BORDE};">
+        <tr><td style="padding:32px 32px 8px 32px;" align="center">
+          ${LOGO_SVG}
+          <div style="margin-top:10px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;color:${TEXTO};letter-spacing:-0.2px;">Chillberry</div>
+        </td></tr>
+        <tr><td style="padding:16px 32px 0 32px;" align="center">
+          <h1 style="margin:0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:22px;line-height:1.3;font-weight:700;color:${TEXTO};">${escapar(titulo)}</h1>
+          <p style="margin:10px 0 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:${TENUE};">${escapar(bajada)}</p>
+        </td></tr>
+        <tr><td style="padding:24px 32px 8px 32px;" align="center">
+          <a href="${escapar(link)}" style="display:inline-block;background:${VIOLETA};color:#FFFFFF;text-decoration:none;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;padding:14px 28px;border-radius:12px;">Crear mi contraseña</a>
+          <p style="margin:14px 0 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:${TENUE};word-break:break-all;">O pegá este link: ${escapar(link)}</p>
+        </td></tr>
+        <tr><td style="padding:16px 32px 28px 32px;">
+          <div style="border-top:1px solid ${BORDE};padding-top:16px;">
+            <p style="margin:0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;color:${TENUE};">Si no esperabas esta invitación, ignorá este correo.</p>
+          </div>
+        </td></tr>
+      </table>
+      <p style="margin:20px 0 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:${TENUE};">
+        Chillberry — el sistema de tu restaurante<br>Este correo se envió automáticamente. No hace falta responderlo.
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  return { html, text };
+}
+
 /**
  * Escapa el contenido antes de meterlo en el HTML. Acá entran datos que vienen
  * del formulario de registro (el nombre del local, el del dueño): sin esto,

@@ -1,10 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { ORDER_TYPE, canTransitionOrder, type OrderStatus } from '@chillberry/domain';
+import { ORDER_TYPE, canTransitionOrder, type OrderStatus, type UserRole } from '@chillberry/domain';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
 import { KitchenService } from '../kitchen/kitchen.service';
 import { ModifiersService } from '../menu/modifiers.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
+
+/** Datos del que crea el pedido que hacen falta para el control de sucursal. */
+type ActorPedido = { id: string; role: UserRole; branchId: string | null };
 
 @Injectable()
 export class OrdersService {
@@ -16,9 +20,16 @@ export class OrdersService {
     private readonly inventory: InventoryService,
   ) {}
 
-  async create(dto: CreateOrderDto, waiterId: string) {
+  async create(dto: CreateOrderDto, actor: ActorPedido) {
+    const waiterId = actor.id;
     const branch = await this.tenantPrisma.client.branch.findUnique({ where: { id: dto.branchId } });
     if (!branch) throw new NotFoundException('Sucursal no encontrada');
+
+    // Un empleado atado a un local (mozo o cajero de esa sucursal) SÓLO puede
+    // crear pedidos en la suya. Sin esto, el `branchId` venía del body sin
+    // control: un cajero podía cargar una venta en la sucursal de al lado. El
+    // dueño y las cuentas sin sucursal siguen pudiendo operar en cualquier local.
+    assertPuedeUsarSucursal(actor, dto.branchId);
 
     if (dto.tableId) {
       const table = await this.tenantPrisma.client.table.findUnique({ where: { id: dto.tableId } });
@@ -28,12 +39,28 @@ export class OrdersService {
       }
     }
 
-    const orderType = dto.type ?? ORDER_TYPE.DineIn;
+    // Sin `type` explícito se deriva de si hay mesa: con mesa es consumo en el
+    // local (DINE_IN), sin mesa es mostrador/para llevar (TAKEAWAY). Antes caía
+    // SIEMPRE a DINE_IN, así que una venta de mostrador quedaba guardada como
+    // "en mesa" sin mesa — inconsistente y ensuciaba los reportes por tipo.
+    // DELIVERY no se crea por acá: nace de `requestDelivery` sobre un pedido
+    // existente (que crea el registro Delivery con dirección, zona, fee y
+    // tracking) o del checkout público. Aceptarlo directo dejaba un pedido
+    // "delivery" huérfano — sin dirección ni repartidor — y con precio de
+    // canal delivery en una venta de mostrador.
+    if (dto.type === ORDER_TYPE.Delivery) {
+      throw new BadRequestException(
+        'Un delivery se pide desde el pedido (botón "Pedir delivery"), no al crearlo',
+      );
+    }
+    const orderType = dto.type ?? (dto.tableId ? ORDER_TYPE.DineIn : ORDER_TYPE.Takeaway);
     const { itemsData, subtotal } = await this.buildItemsData(
       dto.items,
       dto.branchId,
       1,
-      orderType === ORDER_TYPE.Delivery,
+      // Nunca precio de canal delivery acá: DELIVERY quedó bloqueado arriba.
+      // (addItems SÍ mira order.type, para las rondas de un pedido convertido.)
+      false,
     );
 
     const order = await this.tenantPrisma.client.order.create({
@@ -42,7 +69,7 @@ export class OrdersService {
         branchId: dto.branchId,
         tableId: dto.tableId,
         waiterId,
-        type: dto.type ?? ORDER_TYPE.DineIn,
+        type: orderType,
         customerName: dto.customerName,
         customerPhone: dto.customerPhone,
         notes: dto.notes,
@@ -71,9 +98,13 @@ export class OrdersService {
    * Solo agrega a cocina los ítems NUEVOS —no re-dispara los ya entregados— y
    * los marca con la ronda siguiente para que el KDS los muestre aparte.
    */
-  async addItems(orderId: string, items: CreateOrderItemDto[], _actingUserId: string) {
+  async addItems(orderId: string, items: CreateOrderItemDto[], actor: ActorPedido) {
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // Aislamiento por sucursal TAMBIÉN en las operaciones por id: `create` ya
+    // lo validaba, pero con el UUID de un pedido ajeno un empleado atado a otro
+    // local podía mutarlo igual. Se valida contra el branchId REAL del pedido.
+    assertPuedeUsarSucursal(actor, order.branchId);
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('No se pueden agregar ítems a un pedido cerrado');
     }
@@ -138,12 +169,13 @@ export class OrdersService {
    * No se puede vaciar el pedido (el último ítem no se quita: se cancela el
    * pedido), ni tocar uno cerrado o con una parte ya cobrada.
    */
-  async removeItem(orderId: string, itemId: string, _actingUserId: string) {
+  async removeItem(orderId: string, itemId: string, actor: ActorPedido) {
     const order = await this.tenantPrisma.client.order.findUnique({
       where: { id: orderId },
       include: { items: { select: { id: true, quantity: true, unitPrice: true, kitchenTaskId: true } } },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(actor, order.branchId);
     this.assertOrderItemsEditable(order.status);
     await this.assertNoPaidSplit(orderId);
 
@@ -162,7 +194,13 @@ export class OrdersService {
     // pero restan el total dos veces: el segundo delete no encuentra nada
     // (count=0) pero antes se restaba igual, dejando el total por debajo de lo
     // real y de forma permanente.
-    const borrado = await this.tenantPrisma.client.orderItem.deleteMany({ where: { id: itemId, orderId } });
+    // `quantity` en el where: el delta se calculó con ESA cantidad. Si otra
+    // tablet la cambió en el medio (CAS de updateItemQuantity), este delete no
+    // matchea, no se resta un delta desactualizado, y se devuelve el estado
+    // real para que el mozo reintente viendo la cantidad nueva.
+    const borrado = await this.tenantPrisma.client.orderItem.deleteMany({
+      where: { id: itemId, orderId, quantity: item.quantity },
+    });
     if (borrado.count === 0) return this.getOrThrow(orderId);
     await this.applySubtotalDelta(orderId, -lineTotal);
 
@@ -185,7 +223,7 @@ export class OrdersService {
    * Cambia la cantidad de un ítem ya enviado (ej. "eran 2 no 3"). Recalcula el
    * total y avisa al KDS. Para llevar a 0 se usa `removeItem`, no cantidad 0.
    */
-  async updateItemQuantity(orderId: string, itemId: string, quantity: number, _actingUserId: string) {
+  async updateItemQuantity(orderId: string, itemId: string, quantity: number, actor: ActorPedido) {
     if (!Number.isInteger(quantity) || quantity < 1) {
       throw new BadRequestException('La cantidad debe ser 1 o más (para quitar el ítem, eliminalo)');
     }
@@ -194,6 +232,7 @@ export class OrdersService {
       include: { items: { select: { id: true, quantity: true, unitPrice: true } } },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(actor, order.branchId);
     this.assertOrderItemsEditable(order.status);
     await this.assertNoPaidSplit(orderId);
 
@@ -333,6 +372,15 @@ export class OrdersService {
     });
   }
 
+  /** getOrThrow + control de sucursal: para los endpoints por id que expone el
+   *  controller. El getOrThrow pelado queda para uso interno (post-mutación,
+   *  donde la pertenencia ya se validó al cargar el pedido). */
+  async getForActor(id: string, actor: ActorPedido) {
+    const order = await this.getOrThrow(id);
+    assertPuedeUsarSucursal(actor, order.branchId);
+    return order;
+  }
+
   async getOrThrow(id: string) {
     const order = await this.tenantPrisma.client.order.findUnique({
       where: { id },
@@ -342,8 +390,29 @@ export class OrdersService {
     return order;
   }
 
-  async updateStatus(id: string, nextStatus: OrderStatus, actingUserId: string, reason?: string) {
+  async updateStatus(id: string, nextStatus: OrderStatus, actor: ActorPedido, reason?: string) {
+    const actingUserId = actor.id;
     const order = await this.getOrThrow(id);
+    assertPuedeUsarSucursal(actor, order.branchId);
+
+    // COMPLETED manual sólo si el pedido está pagado (o es gratis, total 0).
+    // Antes cualquier admin podía "limpiar" un pedido READY marcándolo
+    // completado: quedaba cerrado SIN pago, sin factura, sin descontar stock y
+    // con la mesa ocupada para siempre — y encima figuraba como venta cobrada
+    // en los reportes (filtran por COMPLETED). El cierre real con factura y
+    // stock lo hace checkAndCompleteOrder cuando el pago cubre el total.
+    if (nextStatus === 'COMPLETED') {
+      const pagado = await this.tenantPrisma.client.payment.aggregate({
+        _sum: { amount: true },
+        where: { orderId: id, status: 'APPROVED' },
+      });
+      const TOLERANCIA = 0.01; // mismo margen de redondeo que usa el cobro
+      if (Number(pagado._sum.amount ?? 0) < Number(order.total) - TOLERANCIA) {
+        throw new ConflictException(
+          'Este pedido tiene saldo sin cobrar — cobralo desde la caja; al cubrir el total se completa solo.',
+        );
+      }
+    }
 
     if (!canTransitionOrder(order.status as OrderStatus, nextStatus)) {
       throw new ConflictException(

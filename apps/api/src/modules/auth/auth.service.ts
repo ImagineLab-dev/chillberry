@@ -307,6 +307,64 @@ export class AuthService {
     return { ok: true };
   }
 
+  /**
+   * Datos mínimos de una invitación pendiente, para que la pantalla
+   * `/invitacion/<token>` pueda saludar por nombre y mostrar a qué restaurante
+   * se está sumando la persona. Devuelve 401 genérico si el token no existe o ya
+   * se usó — no distingue los dos casos para no volver el token un oráculo.
+   */
+  async getInvitation(token: string): Promise<{ email: string; name: string; tenantName: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { invitationToken: token },
+      select: {
+        email: true,
+        name: true,
+        active: true,
+        invitationExpiresAt: true,
+        tenant: { select: { name: true } },
+      },
+    });
+    if (!user || !user.active) throw new UnauthorizedException('Invitación inválida o ya utilizada');
+    // Vencida: mensaje propio — quien tiene el link necesita saber que el
+    // remedio es pedir un reenvío, no probar de nuevo. Las invitaciones
+    // anteriores a la migración no tienen fecha y no vencen.
+    if (user.invitationExpiresAt && user.invitationExpiresAt < new Date()) {
+      throw new UnauthorizedException('La invitación venció — pedile al restaurante que te la reenvíe');
+    }
+    return { email: user.email, name: user.name, tenantName: user.tenant.name };
+  }
+
+  /**
+   * PASO 2 de la invitación: con el token del mail, el empleado fija su clave y
+   * entra. Se limpia el `invitationToken` (un solo uso) y se devuelve la sesión.
+   *
+   * El token viaja por el link del mail y no vence por sí solo; el corte real es
+   * que el dueño puede desactivar al usuario (entonces esto tira 401) o volver a
+   * invitarlo (lo que rota el token y anula el anterior).
+   */
+  async acceptInvite(args: { token: string; password: string }, meta: RequestMeta): Promise<TokenPair> {
+    const user = await this.prisma.user.findUnique({ where: { invitationToken: args.token } });
+    if (!user || !user.active) throw new UnauthorizedException('Invitación inválida o ya utilizada');
+    if (user.invitationExpiresAt && user.invitationExpiresAt < new Date()) {
+      throw new UnauthorizedException('La invitación venció — pedile al restaurante que te la reenvíe');
+    }
+
+    const passwordHash = await argon2.hash(args.password);
+    // El `invitationToken` en el WHERE del updateMany consume el token de forma
+    // atómica: si dos pestañas mandan el mismo token a la vez, la primera pone
+    // count=1 y la segunda count=0 (la fila ya no tiene ese token) — así la
+    // segunda no puede volver a pisar la clave recién puesta.
+    const consumido = await this.prisma.user.updateMany({
+      where: { id: user.id, invitationToken: args.token },
+      data: { passwordHash, invitationToken: null, invitationExpiresAt: null, failedLoginAttempts: 0, lockedUntil: null },
+    });
+    if (consumido.count === 0) throw new UnauthorizedException('Invitación inválida o ya utilizada');
+
+    // `user` ya trae todo lo que issueTokens necesita (id, tenantId, email, role,
+    // branchId); no hace falta releer tras el update.
+    return this.issueTokens(user, meta);
+  }
+
   async logout(refreshToken: string): Promise<void> {
     const tokenHash = this.hashToken(refreshToken);
     const session = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });

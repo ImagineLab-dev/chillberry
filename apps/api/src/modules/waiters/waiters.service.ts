@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { BILL_SPLIT_MODE, BILL_SPLIT_ROUNDING_TOLERANCE } from '@chillberry/domain';
+import { BILL_SPLIT_MODE, BILL_SPLIT_ROUNDING_TOLERANCE, type UserRole } from '@chillberry/domain';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
 import { KitchenGateway } from '../kitchen/kitchen.gateway';
 import { TransferTableDto } from './dto/transfer-table.dto';
@@ -7,6 +8,9 @@ import { MergeTablesDto } from './dto/merge-tables.dto';
 import { SplitOrderDto } from './dto/split-order.dto';
 
 const ACTIVE_ORDER_STATUSES = ['WAITING', 'ACCEPTED', 'PREPARING', 'READY'] as const;
+
+/** Quien opera, para el control de sucursal en las operaciones por id. */
+type Actor = { id: string; role: UserRole; branchId: string | null };
 
 /**
  * Campos de `Table` que puede ver un MOZO. Existe para dejar afuera el
@@ -53,9 +57,12 @@ export class WaitersService {
     });
   }
 
-  async openTable(tableId: string) {
+  async openTable(tableId: string, actor: Actor) {
     const table = await this.tenantPrisma.client.table.findUnique({ where: { id: tableId } });
     if (!table) throw new NotFoundException('Mesa no encontrada');
+    // Por id no hay filtro implicito de sucursal: sin esto, el UUID de una mesa
+    // de otro local alcanzaba para operarla. Mismo criterio que orders/pos.
+    assertPuedeUsarSucursal(actor, table.branchId);
     return this.tenantPrisma.client.table.update({
       where: { id: tableId },
       data: { status: 'OCCUPIED' },
@@ -63,9 +70,11 @@ export class WaitersService {
     });
   }
 
-  async transfer(dto: TransferTableDto, userId: string) {
+  async transfer(dto: TransferTableDto, actor: Actor) {
+    const userId = actor.id;
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: dto.orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(actor, order.branchId);
     if (!order.tableId) throw new BadRequestException('El pedido no está asociado a una mesa');
     if (order.tableId === dto.toTableId) {
       throw new BadRequestException('El pedido ya está en esa mesa');
@@ -73,6 +82,11 @@ export class WaitersService {
 
     const toTable = await this.tenantPrisma.client.table.findUnique({ where: { id: dto.toTableId } });
     if (!toTable) throw new NotFoundException('Mesa destino no encontrada');
+    // La mesa destino tiene que ser del MISMO local que el pedido: mover un
+    // pedido a una mesa de otra sucursal mezcla la caja y la cocina de las dos.
+    if (toTable.branchId !== order.branchId) {
+      throw new BadRequestException('La mesa destino es de otra sucursal');
+    }
     if (toTable.status !== 'AVAILABLE') {
       throw new ConflictException('La mesa destino no está disponible');
     }
@@ -115,7 +129,8 @@ export class WaitersService {
    * mitad de camino es bajo y recuperable a mano; si se vuelve un problema
    * real, envolver en `$transaction(async (tx) => ...)`.
    */
-  async merge(dto: MergeTablesDto, userId: string) {
+  async merge(dto: MergeTablesDto, actor: Actor) {
+    const userId = actor.id;
     const [primaryTableId, ...secondaryTableIds] = dto.tableIds;
     if (!primaryTableId) throw new BadRequestException('Se necesitan al menos 2 mesas para fusionar');
 
@@ -126,12 +141,18 @@ export class WaitersService {
     if (!primaryOrder) {
       throw new BadRequestException('La mesa primaria no tiene un pedido activo para fusionar');
     }
+    assertPuedeUsarSucursal(actor, primaryOrder.branchId);
 
     let addedSubtotal = 0;
 
     for (const tableId of secondaryTableIds) {
       const table = await this.tenantPrisma.client.table.findUnique({ where: { id: tableId } });
       if (!table) throw new NotFoundException(`Mesa no encontrada: ${tableId}`);
+      // Todas las mesas fusionadas tienen que ser del mismo local que la
+      // primaria: fusionar a traves de sucursales mezcla cajas y cocinas.
+      if (table.branchId !== primaryOrder.branchId) {
+        throw new BadRequestException(`La mesa ${table.code} es de otra sucursal`);
+      }
 
       const order = await this.tenantPrisma.client.order.findFirst({
         where: { tableId, status: { in: [...ACTIVE_ORDER_STATUSES] } },
@@ -178,20 +199,16 @@ export class WaitersService {
       await this.tenantPrisma.client.table.update({ where: { id: tableId }, data: { status: 'OCCUPIED' } });
     }
 
-    // El total NO es el subtotal: es `subtotal + impuestos - descuento + envío`,
-    // la misma fórmula que usa el resto del sistema (`applySubtotalDelta`,
-    // `applyDiscount`, loyalty). Escribir `total: newSubtotal` borraba el
-    // descuento ya aplicado a la mesa primaria — el cliente terminaba pagando de
-    // más y el `Discount` quedaba huérfano en la auditoría.
-    const newSubtotal = Number(primaryOrder.subtotal) + addedSubtotal;
-    const newTotal =
-      newSubtotal +
-      Number(primaryOrder.taxTotal) -
-      Number(primaryOrder.discountTotal) +
-      Number(primaryOrder.deliveryFee ?? 0);
+    // `increment` y NO una escritura absoluta. La version anterior recalculaba
+    // subtotal/total desde los valores leidos al ENTRAR al merge: si un mozo
+    // agregaba una ronda a la mesa primaria mientras el merge corria, ese
+    // increment quedaba pisado — los items existian pero no se cobraban. Sumar
+    // el delta preserva cualquier cambio concurrente, y como solo se mueve el
+    // subtotal, el total se mueve exactamente lo mismo (tax/descuento/envio de
+    // la primaria no cambian aca) — misma logica que addItems.
     await this.tenantPrisma.client.order.update({
       where: { id: primaryOrder.id },
-      data: { subtotal: newSubtotal, total: newTotal },
+      data: { subtotal: { increment: addedSubtotal }, total: { increment: addedSubtotal } },
     });
 
     await this.tenantPrisma.client.tableMergeLog.create({
@@ -210,12 +227,13 @@ export class WaitersService {
     });
   }
 
-  async requestBill(orderId: string) {
+  async requestBill(orderId: string, actor: Actor) {
     const order = await this.tenantPrisma.client.order.findUnique({
       where: { id: orderId },
       include: { table: { select: { code: true } } },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(actor, order.branchId);
     const updated = await this.tenantPrisma.client.order.update({
       where: { id: orderId },
       data: { billRequestedAt: new Date() },
@@ -233,12 +251,13 @@ export class WaitersService {
     return updated;
   }
 
-  async split(orderId: string, dto: SplitOrderDto) {
+  async split(orderId: string, dto: SplitOrderDto, actor: Actor) {
     const order = await this.tenantPrisma.client.order.findUnique({
       where: { id: orderId },
       include: { items: true },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(actor, order.branchId);
 
     const total = Number(order.total);
     let partsData: { label: string; amount: number }[];

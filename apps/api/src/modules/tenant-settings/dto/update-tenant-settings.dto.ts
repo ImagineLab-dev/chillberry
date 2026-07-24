@@ -38,7 +38,7 @@ export class UpdateTenantSettingsDto {
   brandColor?: string | null;
 
   /**
-   * Subdominio público editable: `<publicSubdomain>.chillberry.io`. Es un label
+   * Subdominio público editable: `<publicSubdomain>.chillberry.app`. Es un label
    * DNS, así que sólo minúsculas, números y guiones (sin guion al inicio/fin).
    * `null` lo borra. Único global (409 si choca) y con una lista de reservados
    * que se valida en el service.
