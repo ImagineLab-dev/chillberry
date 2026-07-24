@@ -141,6 +141,7 @@ export class LoyaltyService {
     id: string;
     tenantId: string;
     total: unknown;
+    deliveryFee: unknown;
     customerPhone: string | null;
     customerName: string | null;
   }): Promise<void> {
@@ -151,7 +152,11 @@ export class LoyaltyService {
 
       const earnPer = Number(program.earnPer);
       if (earnPer <= 0) return;
-      const earned = Math.floor(Number(order.total) / earnPer);
+      // Los puntos se acreditan sobre el CONSUMO, no sobre el envío: incluir el
+      // deliveryFee regalaba puntos por el costo de reparto (plata que después se
+      // canjea como descuento).
+      const base = Number(order.total) - Number(order.deliveryFee ?? 0);
+      const earned = Math.floor(base / earnPer);
       if (earned <= 0) return;
 
       // Idempotencia: si ya hay una acreditación EARN para este pedido, no

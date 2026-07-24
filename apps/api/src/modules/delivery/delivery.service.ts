@@ -493,10 +493,18 @@ export class DeliveryService {
       throw new ConflictException(`No se puede pasar de ${delivery.status} a ${dto.status}`);
     }
 
-    const updated = await this.tenantPrisma.client.delivery.update({
-      where: { id: deliveryId },
+    // Compare-and-set: `cancel` lo comparten el despacho (consola) y el repartidor
+    // (app). Sin condicionar por el estado leído, dos cancelaciones a la vez
+    // decrementaban `activeDeliveriesCount` DOS veces (podía quedar NEGATIVO → ese
+    // repartidor salía siempre como "menos cargado" y se sobre-asignaba) y sumaban
+    // dos cancelaciones. Sólo el que gana la transición toca los contadores.
+    const cancelada = await this.tenantPrisma.client.delivery.updateMany({
+      where: { id: deliveryId, status: delivery.status },
       data: { status: dto.status, cancelledAt: new Date(), cancelReason: dto.reason, cancelledBy },
     });
+    if (cancelada.count === 0) {
+      throw new ConflictException('La entrega ya cambió de estado — recargá y volvé a intentar');
+    }
 
     if (delivery.driverId) {
       await this.tenantPrisma.client.driver.update({
@@ -510,7 +518,7 @@ export class DeliveryService {
 
     await this.logEvent(deliveryId, dto.status, { reason: dto.reason, cancelledBy });
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: dto.status });
-    return updated;
+    return this.tenantPrisma.client.delivery.findUniqueOrThrow({ where: { id: deliveryId } });
   }
 
   async recordLocation(userId: string, dto: LocationPingDto) {
@@ -844,14 +852,23 @@ export class DeliveryService {
       throw new ConflictException(`No se puede pasar de ${delivery.status} a ${nextStatus}`);
     }
 
-    const updated = await this.tenantPrisma.client.delivery.update({
-      where: { id: deliveryId },
+    // Compare-and-set: condiciona la transición al estado leído. Cierra la carrera
+    // cron-reasignación vs. repartidor-acepta: si `reassignStale` ya lo devolvió a
+    // PENDING, el accept (desde DRIVER_ASSIGNED) no matchea y falla en vez de pisar
+    // una entrega ya reasignada (y viceversa).
+    const cambiada = await this.tenantPrisma.client.delivery.updateMany({
+      where: { id: deliveryId, status: delivery.status },
       data: { status: nextStatus, ...extraData },
     });
+    if (cambiada.count === 0) {
+      throw new ConflictException('La entrega ya cambió de estado — recargá y volvé a intentar');
+    }
     await this.logEvent(deliveryId, `DRIVER_${nextStatus}`, {});
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: nextStatus });
     // Quien llama a esto SIEMPRE es el repartidor (accept / pick-up).
-    return stripConfirmationCode(updated);
+    return stripConfirmationCode(
+      await this.tenantPrisma.client.delivery.findUniqueOrThrow({ where: { id: deliveryId } }),
+    );
   }
 
   private async logEvent(deliveryId: string, type: string, payload: Record<string, unknown>) {
