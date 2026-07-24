@@ -644,6 +644,15 @@ export class PosService {
       .reduce((sum, p) => sum + Number(p.amount), 0);
     if (paid <= 0) throw new ConflictException('Este pedido no tiene pagos aprobados para reembolsar');
 
+    // El reembolso en efectivo SÓLO puede devolver lo que entró en efectivo: un
+    // pago con TARJETA no está en el cajón, así que reembolsarlo como CASH lo
+    // descuadra Y no revierte el cargo del proveedor. Se topea al efectivo
+    // cobrado; la parte electrónica se reversa contra el proveedor (pendiente al
+    // activar dLocal). Hoy todo es efectivo, así que cashPaid == paid: no cambia.
+    const cashPaid = order.payments
+      .filter((p) => p.status === 'APPROVED' && p.method === PAYMENT_METHOD.Cash)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+
     const session = await this.getOpenSession(order.branchId);
     if (!session) {
       throw new ConflictException(
@@ -664,10 +673,14 @@ export class PosService {
             where: { orderId, type: 'REFUND' },
           });
           const alreadyRefunded = Number(prev._sum.amount ?? 0);
-          const maxRefundable = paid - alreadyRefunded;
+          const maxRefundable = cashPaid - alreadyRefunded;
           if (dto.amount > maxRefundable + CHARGE_TOLERANCE) {
+            const nota =
+              paid > cashPaid
+                ? ' (la parte pagada con tarjeta se reembolsa desde el proveedor, no desde la caja)'
+                : '';
             throw new BadRequestException(
-              `No podés reembolsar ${dto.amount.toFixed(2)}: el máximo disponible es ${maxRefundable.toFixed(2)}`,
+              `No podés reembolsar ${dto.amount.toFixed(2)} en efectivo: el máximo disponible es ${maxRefundable.toFixed(2)}${nota}`,
             );
           }
 
