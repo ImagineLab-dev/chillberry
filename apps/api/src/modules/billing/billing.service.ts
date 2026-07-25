@@ -215,11 +215,19 @@ export class BillingService {
       data: { status: 'FAILED' },
     });
 
+    // País del tenant → preselecciona el país en el checkout de dLocal (el
+    // pagador no lo elige a mano). No cambia la moneda: dLocal acepta país + USD.
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: this.tenantPrisma.tenantId },
+      select: { countryCode: true },
+    });
+
     const intent = await this.dlocal.createSubscriptionIntent({
       tenantId: this.tenantPrisma.tenantId,
       planId: plan.id,
       amount: Number(plan.priceMonthly),
       currency: plan.currency,
+      country: tenant.countryCode,
     });
 
     await this.tenantPrisma.client.subscription.update({

@@ -9,6 +9,12 @@ export type CreateSubscriptionIntentInput = {
   planId: string;
   amount: number;
   currency: string;
+  /** País del tenant (ISO 3166-1 alpha-2, ej. "PY") para PRESELECCIONAR el país
+   *  en el checkout hosteado del proveedor, así el pagador no lo tiene que elegir
+   *  a mano. Opcional; si no viene, el checkout lo pregunta. Verificado contra
+   *  dLocal (25/07/2026): acepta `country` + `currency: USD` juntos, así que se
+   *  prellena el país SIN cambiar la moneda de cobro. */
+  country?: string;
 };
 
 export type CreateSubscriptionIntentResult = {

@@ -103,6 +103,11 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
       body: JSON.stringify({
         name: `Chillberry ${input.planId}`,
         description: `Suscripción Chillberry (plan ${input.planId})`,
+        // País del tenant (ISO alpha-2) para preseleccionar el país en el
+        // checkout — el pagador no lo elige. dLocal acepta country + USD juntos
+        // (verificado 25/07/2026), así que se prellena SIN cambiar la moneda.
+        // Sin country, dLocal pregunta el país (y exige moneda USD).
+        ...(input.country ? { country: input.country.toUpperCase() } : {}),
         currency: input.currency,
         amount: input.amount,
         frequency_type: 'MONTHLY',
