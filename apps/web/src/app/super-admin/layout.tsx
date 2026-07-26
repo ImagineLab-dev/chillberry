@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Building2, LogOut, ScrollText, ShieldCheck } from 'lucide-react';
+import { BarChart3, Building2, LogOut, MessageSquarePlus, ScrollText, ShieldCheck } from 'lucide-react';
 import { logout } from '@/lib/auth';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Badge } from '@/components/ui';
@@ -22,6 +22,7 @@ const NAV = [
   { href: '/super-admin/tenants', label: 'Tenants', icon: Building2 },
   { href: '/super-admin/metrics', label: 'Métricas', icon: BarChart3 },
   { href: '/super-admin/audit', label: 'Auditoría', icon: ScrollText },
+  { href: '/super-admin/sugerencias', label: 'Sugerencias', icon: MessageSquarePlus },
 ];
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {

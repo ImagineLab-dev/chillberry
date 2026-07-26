@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SupportModule } from '../support/support.module';
 import { SuperAdminController } from './super-admin.controller';
 import { SuperAdminService } from './super-admin.service';
 import { SystemTenantGuard } from './system-tenant.guard';
@@ -9,6 +10,7 @@ import { SystemTenantGuard } from './system-tenant.guard';
  * debería poder inyectar un service que lee cross-tenant.
  */
 @Module({
+  imports: [SupportModule],
   controllers: [SuperAdminController],
   providers: [SuperAdminService, SystemTenantGuard],
 })

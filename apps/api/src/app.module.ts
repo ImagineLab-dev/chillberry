@@ -28,6 +28,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { SupportModule } from './modules/support/support.module';
 import { PurchasingModule } from './modules/purchasing/purchasing.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
@@ -81,6 +82,7 @@ import { SuperAdminModule } from './modules/super-admin/super-admin.module';
     ReportsModule,
     ReservationsModule,
     FeedbackModule,
+    SupportModule,
     PurchasingModule,
     MarketingModule,
     CouponsModule,

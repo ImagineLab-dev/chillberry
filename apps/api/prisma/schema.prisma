@@ -61,8 +61,37 @@ model Tenant {
   restaurants  Restaurant[]
   drivers      Driver[]
   subscription Subscription?
+  supportRequests SupportRequest[]
 
   @@map("tenants")
+}
+
+/// Reporte de problema o sugerencia de función que un restaurante (tenant) le
+/// manda al equipo de Chillberry. Distinto de `Feedback` (que son las opiniones
+/// de los COMENSALES sobre el restaurante). Se avisa por mail a soporte@ y se
+/// gestiona desde el panel de super-admin.
+enum SupportRequestType {
+  BUG
+  SUGGESTION
+}
+
+model SupportRequest {
+  id        String             @id @default(uuid()) @db.Uuid
+  tenantId  String             @map("tenant_id") @db.Uuid
+  /// Quién lo mandó (empleado). Nullable por si el usuario se borra después.
+  userId    String?            @map("user_id") @db.Uuid
+  type      SupportRequestType
+  message   String
+  /// Contexto opcional que ayuda a ubicar el reporte (pantalla, navegador).
+  context   String?
+  /// Ya lo revisó/atendió el equipo.
+  handled   Boolean            @default(false)
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([handled, createdAt])
+  @@map("support_requests")
 }
 
 model User {

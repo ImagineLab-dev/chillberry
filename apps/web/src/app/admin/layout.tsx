@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquarePlus,
   Palette,
   QrCode,
   ReceiptText,
@@ -81,6 +82,8 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   { items: [{ href: '/admin/settings', label: 'Configuración', icon: Settings }] },
   // Centro de ayuda — guías paso a paso, en texto.
   { items: [{ href: '/admin/ayuda', label: 'Ayuda', icon: HelpCircle }] },
+  // Reportar un problema / sugerir una función (al equipo de Chillberry).
+  { items: [{ href: '/admin/sugerencias', label: 'Sugerencias', icon: MessageSquarePlus }] },
 ];
 
 // Terminales full-screen: apps de rol que el dueño/admin abre para operar o

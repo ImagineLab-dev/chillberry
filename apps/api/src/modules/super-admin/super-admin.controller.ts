@@ -7,6 +7,7 @@ import { SystemTenantGuard } from './system-tenant.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { SuperAdminService } from './super-admin.service';
+import { SupportService } from '../support/support.service';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
@@ -29,7 +30,10 @@ import { ListAuditDto } from './dto/list-audit.dto';
 @UseGuards(SystemTenantGuard)
 @Controller('super-admin')
 export class SuperAdminController {
-  constructor(private readonly superAdmin: SuperAdminService) {}
+  constructor(
+    private readonly superAdmin: SuperAdminService,
+    private readonly support: SupportService,
+  ) {}
 
   @Get('tenants')
   listTenants(@Query() query: ListTenantsDto) {
@@ -78,5 +82,18 @@ export class SuperAdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.superAdmin.updateSubscription(id, dto, user.id);
+  }
+
+  // --- Reportes/sugerencias de los restaurantes (ver SupportModule) ---
+
+  @Get('support')
+  listSupport() {
+    return this.support.listForSuperAdmin();
+  }
+
+  @Throttle(strictThrottle(30))
+  @Patch('support/:id/handled')
+  setSupportHandled(@Param('id', ParseUUIDPipe) id: string, @Body() body: { handled?: boolean }) {
+    return this.support.setHandled(id, body.handled !== false);
   }
 }
