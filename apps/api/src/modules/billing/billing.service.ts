@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -34,6 +35,8 @@ function addDays(date: Date, days: number): Date {
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
+
   constructor(
     // Crudo (sin tenant scope) — lo necesitan `processWebhook` (corre sin
     // JWT, sin tenantId en el contexto de ALS) y las lecturas de `Plan`
@@ -448,7 +451,16 @@ export class BillingService {
   ) {
     if (provider !== 'dlocal') throw new BadRequestException(`Proveedor "${provider}" no soportado`);
 
+    // La firma se valida ANTES de tocar la DB: un webhook con firma inválida se
+    // rechaza sin persistir nada. Antes se hacía un `upsert` del evento rechazado
+    // —con el `payment_id` que trae quien llama como clave— y recién después el
+    // 400, así que un no-autenticado podía acumular filas (acotado por el
+    // rate-limit de la ruta, pero innecesario). El rechazo queda en el log.
     const signatureValid = this.dlocal.verifyWebhookSignature(rawBody, signatureHeader);
+    if (!signatureValid) {
+      this.logger.warn(`Webhook dLocal rechazado por firma inválida (ref=${ref ?? '—'})`);
+      throw new BadRequestException('Firma de webhook inválida');
+    }
 
     // Id del evento para idempotencia: el `payment_id` real, o el `eventId` del mock.
     const eventId = raw.payment_id ?? raw.eventId;
@@ -459,22 +471,6 @@ export class BillingService {
     });
     if (existing?.processedAt) {
       return { ok: true, duplicate: true };
-    }
-
-    if (!signatureValid) {
-      await this.prisma.paymentWebhookEvent.upsert({
-        where: { provider_eventId: { provider, eventId } },
-        update: { payload: raw, signatureValid: false },
-        create: {
-          scope: 'SAAS_BILLING',
-          provider,
-          eventId,
-          eventType: raw.eventType ?? 'PAYMENT',
-          payload: raw,
-          signatureValid: false,
-        },
-      });
-      throw new BadRequestException('Firma de webhook inválida');
     }
 
     const event = await this.prisma.paymentWebhookEvent.upsert({

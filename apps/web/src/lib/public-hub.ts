@@ -126,6 +126,9 @@ function resolveHref(
         ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ctx.address)}`
         : undefined;
     case 'custom':
-      return b.url ? b.url : undefined;
+      // Defensa en profundidad: sólo http/https como href. El DTO del backend ya
+      // rechaza otros schemes (javascript:, data:...), pero si una URL rara
+      // llegara por otra vía (write directo a la DB, dato migrado), no se renderiza.
+      return b.url && /^https?:\/\//i.test(b.url) ? b.url : undefined;
   }
 }
