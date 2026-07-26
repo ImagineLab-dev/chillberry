@@ -73,6 +73,52 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         ],
       },
       {
+        slug: 'instalar-app-pwa',
+        title: 'Instalá Chillberry como app (celular o compu)',
+        summary: 'Se instala como una app, sin pasar por ninguna tienda.',
+        blocks: [
+          {
+            type: 'p',
+            text: 'Chillberry es una app web instalable (PWA): la podés instalar en cualquier dispositivo directamente desde el navegador, sin App Store ni Play Store. Se abre a pantalla completa, como una app normal, y queda con su ícono en la pantalla de inicio.',
+          },
+          {
+            type: 'p',
+            text: 'Es ideal para las terminales: dejá la Caja instalada en una tablet, la Cocina en una pantalla del pase y el Mesero en el teléfono de cada mozo. Cada uno abre su puesto de un toque, sin las barras del navegador.',
+          },
+          { type: 'heading', text: 'En Android (Chrome)' },
+          {
+            type: 'steps',
+            items: [
+              'Abrí chillberry.app en Chrome e iniciá sesión.',
+              'Tocá el menú (los tres puntos, arriba a la derecha).',
+              'Elegí "Instalar app" o "Agregar a pantalla de inicio".',
+            ],
+          },
+          { type: 'heading', text: 'En iPhone / iPad (Safari)' },
+          {
+            type: 'steps',
+            items: [
+              'Abrí chillberry.app en Safari e iniciá sesión.',
+              'Tocá el botón Compartir (el cuadrado con la flecha hacia arriba).',
+              'Bajá en el menú y elegí "Agregar a inicio".',
+            ],
+          },
+          { type: 'heading', text: 'En la computadora (Chrome o Edge)' },
+          {
+            type: 'steps',
+            items: [
+              'Abrí chillberry.app.',
+              'En la barra de direcciones aparece un ícono de instalar (una pantallita con una flecha). Tocalo, o buscá "Instalar Chillberry" en el menú del navegador.',
+              'Confirmá. Queda como una ventana propia, sin las barras del navegador.',
+            ],
+          },
+          {
+            type: 'tip',
+            text: 'Instalala en el dispositivo de cada puesto: la Caja en la tablet del cajero, la Cocina en la pantalla del pase, el Mesero en el teléfono del mozo. Además, con la app instalada llegan mejor los avisos al teléfono.',
+          },
+        ],
+      },
+      {
         slug: 'restaurante-y-sucursal',
         title: 'Configurar tu restaurante y sucursales',
         summary: 'Datos del local, dirección en el mapa y horarios de atención.',
