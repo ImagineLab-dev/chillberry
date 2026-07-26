@@ -10,6 +10,7 @@ import {
   ChefHat,
   Contact,
   CreditCard,
+  HelpCircle,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -91,6 +92,7 @@ export function CommandPalette() {
       { id: 'settings', label: 'Configuración', hint: 'País, moneda, puntos', icon: Settings, run: go('/admin/settings') },
       { id: 'staff', label: 'Equipo', hint: 'Configuración', icon: UsersRound, run: go('/admin/staff') },
       { id: 'billing', label: 'Facturación', hint: 'Configuración', icon: CreditCard, run: go('/admin/billing') },
+      { id: 'ayuda', label: 'Ayuda', hint: 'Guías paso a paso', icon: HelpCircle, run: go('/admin/ayuda') },
       // Terminales (apps full-screen)
       { id: 'kitchen', label: 'Cocina (KDS)', icon: ChefHat, run: go('/kitchen') },
       { id: 'pos', label: 'Caja / POS', icon: CreditCard, run: go('/pos') },

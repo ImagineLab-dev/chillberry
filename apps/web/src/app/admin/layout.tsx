@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Contact,
   ExternalLink,
+  HelpCircle,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -78,6 +79,8 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   // Configuración va suelto abajo (sin encabezado). Adentro tiene pestañas:
   // General / Restaurantes / Equipo / Facturación (ver settings-tabs.tsx).
   { items: [{ href: '/admin/settings', label: 'Configuración', icon: Settings }] },
+  // Centro de ayuda — guías paso a paso, en texto.
+  { items: [{ href: '/admin/ayuda', label: 'Ayuda', icon: HelpCircle }] },
 ];
 
 // Terminales full-screen: apps de rol que el dueño/admin abre para operar o
