@@ -1061,7 +1061,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
       {/* Barra de carrito flotante — solo si se puede pedir y hay algo cargado. */}
       {orderingEnabled && cartCount > 0 && !cartOpen && !customizing && (
-        <div className="fixed inset-x-0 bottom-0 z-20 p-4">
+        <div className="fixed inset-x-0 bottom-0 z-20 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={() => setCartOpen(true)}
@@ -1079,7 +1079,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
       {/* Revisión del carrito + tipo de entrega + datos de contacto. */}
       {cartOpen && (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
-          <div className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 sm:rounded-b-xl">
+          <div className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl">
             <h2 className="mb-4 font-heading text-xl font-semibold tracking-tight text-foreground">Tu pedido</h2>
 
             <ul className="mb-4 space-y-4">
@@ -1432,7 +1432,7 @@ function CustomizeSheet({
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
       <div
-        className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 sm:rounded-b-xl"
+        className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
         role="dialog"
         aria-modal="true"
         aria-label={`Opciones de ${item.name}`}

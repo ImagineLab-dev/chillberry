@@ -1358,7 +1358,7 @@ export default function PosPage() {
         >
           <div
             ref={movementModalRef}
-            className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 sm:rounded-b-xl"
+            className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1478,7 +1478,7 @@ export default function PosPage() {
         >
           <div
             ref={newOrderModalRef}
-            className="panel flex max-h-[92vh] w-full max-w-2xl animate-slide-up flex-col overflow-hidden rounded-b-none p-5 sm:rounded-b-xl"
+            className="panel flex max-h-[92vh] w-full max-w-2xl animate-slide-up flex-col overflow-hidden rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Hanken_Grotesk, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { THEME_INIT_SCRIPT } from '@/lib/theme';
@@ -69,6 +69,17 @@ export const metadata: Metadata = {
   // WhatsApp, ese público quedaba sin ningún canal de aviso.
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Chillberry', statusBarStyle: 'default' },
+  // Íconos para instalar como app. iOS NO lee el manifest para el ícono de la
+  // pantalla de inicio: necesita `apple-touch-icon` sí o sí (sin él usa una
+  // captura recortada). Chrome/Android toma los PNG del manifest.
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   // Preview al compartir el link (WhatsApp/Instagram/Facebook) y tarjeta de X.
   // La imagen sale sola de `app/opengraph-image.png`. Las páginas públicas de
   // cada restaurante pisan esto con su nombre/foto (ver sus `generateMetadata`).
@@ -86,6 +97,19 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
   },
   robots: { index: true, follow: true },
+};
+
+export const viewport: Viewport = {
+  // `viewport-fit=cover`: en iPhone con notch, la app instalada usa toda la
+  // pantalla y las barras fijas leen `env(safe-area-inset-*)` para no quedar
+  // tapadas por el notch ni la barra de inicio.
+  viewportFit: 'cover',
+  // Tinta la barra del navegador móvil según el tema — que combine con la página
+  // en vez de quedar blanca de fábrica.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F7F5FB' },
+    { media: '(prefers-color-scheme: dark)', color: '#14101F' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
