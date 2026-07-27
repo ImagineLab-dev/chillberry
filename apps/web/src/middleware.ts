@@ -50,7 +50,7 @@ const PUBLIC_PATHS = ['/login', '/register', '/recuperar', '/track', '/menu', '/
  * favicon que no aparece y nada más.
  */
 const ASSETS_RAIZ =
-  /^\/(favicon\.ico|icon\.\w+|apple-icon\.?\w*|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml|sw\.js|manifest\.webmanifest)$/;
+  /^\/(favicon\.ico|icon[\w-]*\.\w+|apple-icon\.?\w*|apple-touch-icon\.\w+|opengraph-image\.?\w*|twitter-image\.?\w*|robots\.txt|sitemap\.xml|sw\.js|manifest\.webmanifest)$/;
 
 // Dominio raíz de la app en producción (ej. 'chillberry.app'). En dev, el host
 // es 'localhost:3000' y los subdominios se prueban con '<sub>.localhost:3000'.
@@ -137,6 +137,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|sw.js|manifest.webmanifest|api).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon|apple-touch-icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|sw.js|manifest.webmanifest|api).*)',
   ],
 };
