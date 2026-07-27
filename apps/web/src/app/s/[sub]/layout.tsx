@@ -4,14 +4,18 @@ import type { Metadata } from 'next';
  * Storefront de un tenant por subdominio (`<sub>.chillberry.app`, reescrito a
  * `/s/[sub]`). Igual que la carta por slug: el page es client, así que la
  * metadata (título + descripción + Open Graph con el nombre y el logo del
- * restaurante) la aporta este layout server con `generateMetadata`.
+ * restaurante) la aporta este layout server con `generateMetadata`, y los datos
+ * estructurados (schema.org `Restaurant`) se inyectan acá para Google.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://chillberry.app/api';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://chillberry.app';
 
+type StoreBranch = { slug?: string | null; name?: string; address?: string | null };
 type StoreMeta = {
   tenantName?: string;
   logoUrl?: string | null;
+  branches?: StoreBranch[];
 };
 
 async function fetchStore(sub: string): Promise<StoreMeta | null> {
@@ -56,6 +60,44 @@ export async function generateMetadata({ params }: { params: Promise<{ sub: stri
   };
 }
 
-export default function StorefrontLayout({ children }: { children: React.ReactNode }) {
-  return children;
+/** schema.org Restaurant de la marca: dirección sólo si hay UNA sola sucursal. */
+function buildStoreJsonLd(store: StoreMeta, sub: string): Record<string, unknown> {
+  const url = `${SITE_URL}/s/${sub}`;
+  const branches = store.branches ?? [];
+  const onlyBranch = branches.length === 1 ? branches[0] : null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Restaurant',
+    name: store.tenantName,
+    url,
+    hasMenu: url,
+    ...(store.logoUrl ? { image: store.logoUrl } : {}),
+    ...(onlyBranch?.address
+      ? { address: { '@type': 'PostalAddress', streetAddress: onlyBranch.address } }
+      : {}),
+  };
+}
+
+export default async function StorefrontLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ sub: string }>;
+}) {
+  const { sub } = await params;
+  const store = await fetchStore(sub);
+  const jsonLd = store?.tenantName ? buildStoreJsonLd(store, sub) : null;
+
+  return (
+    <>
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+      {children}
+    </>
+  );
 }

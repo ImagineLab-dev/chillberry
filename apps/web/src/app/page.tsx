@@ -29,6 +29,39 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
 };
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://chillberry.app';
+
+/**
+ * Datos estructurados (schema.org) de la landing. Le dicen a Google qué ES
+ * Chillberry: un software de gestión (SoftwareApplication) publicado por una
+ * organización. No incluimos `aggregateRating` a propósito: inventar estrellas
+ * sin reseñas reales viola las políticas de Google y es deshonesto. El `offers`
+ * en 0 representa la prueba gratis real que ofrece la landing.
+ */
+const LANDING_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Chillberry',
+  applicationCategory: 'BusinessApplication',
+  applicationSubCategory: 'Software de gestión para restaurantes',
+  operatingSystem: 'Web, iOS, Android',
+  url: SITE_URL,
+  description:
+    'Sistema de gestión para restaurantes: pedidos, cocina (KDS), caja, delivery y carta con QR en un solo lugar, sin comisión por venta.',
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+    description: 'Prueba gratis, sin tarjeta y sin instalar nada.',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Chillberry',
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon-512.png`,
+  },
+} as const;
+
 const FEATURES = [
   {
     icon: ChefHat,
@@ -181,6 +214,11 @@ const PLAN_INCLUDES = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Datos estructurados para Google (no se renderiza nada visible). */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(LANDING_JSONLD) }}
+      />
       {/* ---------------------------------------------------------- nav */}
       <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
