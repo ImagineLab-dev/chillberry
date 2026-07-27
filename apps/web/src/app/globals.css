@@ -23,20 +23,20 @@
      ========================================================================== */
 
   :root {
-    --background: 225 29% 92%; /* #E5E8F1 lavanda-gris — el fondo de las referencias */
-    --surface: 240 50% 99%; /* #FBFBFE casi blanco: la tarjeta inflada */
-    --foreground: 250 25% 14%; /* 13.72:1 sobre background */
-    --muted: 228 26% 90%;
-    --muted-foreground: 240 10% 40%; /* 5.32:1 sobre background, 5.04:1 sobre muted */
+    --background: 260 40% 98%; /* #F7F5FB blanco casi puro con leve violeta (Stitch) */
+    --surface: 0 0% 100%; /* #FFFFFF blanco puro: la card flota sobre el fondo limpio */
+    --foreground: 250 28% 13%; /* >15:1 sobre background */
+    --muted: 258 30% 95%;
+    --muted-foreground: 250 12% 40%; /* 5.4:1 sobre background */
 
     /* El borde es CASI INVISIBLE a propósito (1.44:1): en clay la tarjeta se
        lee por la sombra, no por el contorno. Es decorativo — nunca es lo único
        que identifica un control. */
-    --border: 230 22% 85%;
+    --border: 255 26% 91%;
     /* --input SÍ es funcional: es el límite del campo de formulario, así que
-       cumple 3:1 (WCAG 1.4.11) — 3.16:1 sobre background, 3.74:1 sobre surface.
+       cumple 3:1 (WCAG 1.4.11) sobre el fondo casi blanco.
        Es el único token que consume `.input` como border-color. */
-    --input: 230 20% 56%;
+    --input: 250 18% 60%;
     /* Sombra tintada de violeta, no gris neutro: es lo que hace que el clay se
        sienta cálido y no sucio. */
     --shadow: 250 40% 40%;
@@ -116,8 +116,8 @@
     /* Clay en oscuro: la superficie está APENAS más clara que el fondo (1.10:1)
        y la separación la hace la sombra negra, no el contraste de relleno.
        Nada de negro puro — todo tintado de violeta. */
-    --background: 250 16% 9%; /* #15131B */
-    --surface: 250 14% 13%; /* #1E1D26 */
+    --background: 258 32% 9%; /* #14101F violeta tinta premium (Stitch) */
+    --surface: 258 26% 14%; /* #1E1830 card elevada */
     --foreground: 250 20% 97%; /* #F6F6F9 — no blanco puro. 17.06:1 */
     --muted: 250 10% 20%;
     --muted-foreground: 250 12% 68%; /* 7.57:1 sobre background, 5.49:1 sobre muted */
@@ -211,13 +211,17 @@
   h3,
   h4 {
     font-family: var(--font-heading), system-ui, sans-serif;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    /* Display más pesado y apretado: carácter "editorial-tech" del rediseño. */
+    font-weight: 700;
+    letter-spacing: -0.03em;
   }
 
-  /* Cifras alineadas en columnas de métricas/precios. */
+  /* Cifras alineadas en columnas de métricas/precios. En el rediseño van en la
+     mono (JetBrains Mono): alineación tabular real + aire premium/fintech. */
   .tabular {
+    font-family: var(--font-mono), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
 
   /* Entrada de las demos de la landing: fade + un desplazamiento corto. Dura

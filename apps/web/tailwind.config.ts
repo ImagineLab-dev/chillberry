@@ -50,6 +50,8 @@ const config: Config = {
       fontFamily: {
         heading: ['var(--font-heading)', 'system-ui', 'sans-serif'],
         sans: ['var(--font-body)', 'system-ui', 'sans-serif'],
+        // Datos numéricos (precios, métricas, timers, IDs): alineación tabular.
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
       borderRadius: {
         // ====================================================================

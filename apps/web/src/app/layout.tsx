@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Space_Grotesk, DM_Sans } from 'next/font/google';
+import { Hanken_Grotesk, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { THEME_INIT_SCRIPT } from '@/lib/theme';
 import { ThemeProvider } from '@/components/theme-provider';
@@ -7,17 +7,29 @@ import { ToastProvider } from '@/components/toast';
 
 // Self-hosted por next/font: sin request a Google, con preload y size-adjust
 // (evita el salto de layout al cargar la fuente).
-const heading = Space_Grotesk({
+//
+// Sistema tipográfico (rediseño): display grotesque con pesos altos para el
+// carácter "editorial-tech", cuerpo humanista legible, y una mono para todo dato
+// numérico (precios, métricas, timers, IDs) — la alineación tabular es lo que le
+// da el aire premium/fintech.
+const heading = Hanken_Grotesk({
   subsets: ['latin'],
-  weight: ['500', '600', '700'],
+  weight: ['500', '600', '700', '800'],
   variable: '--font-heading',
   display: 'swap',
 });
 
-const body = DM_Sans({
+const body = Plus_Jakarta_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
   variable: '--font-body',
+  display: 'swap',
+});
+
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '700'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -81,7 +93,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // suppressHydrationWarning: THEME_INIT_SCRIPT muta className y style del
     // <html> antes de que React hidrate, así que el markup del servidor no
     // coincide a propósito.
-    <html lang="es" className={`${heading.variable} ${body.variable}`} suppressHydrationWarning>
+    <html
+      lang="es"
+      className={`${heading.variable} ${body.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* Bloqueante y antes del primer paint: sin esto la página aparece un
             frame en el tema equivocado al recargar. */}
