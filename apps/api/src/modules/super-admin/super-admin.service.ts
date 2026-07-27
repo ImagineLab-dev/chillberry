@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { canDowngradeToPlan, SUBSCRIPTION_STATUS, type PlanLimits } from '@chillberry/domain';
+import { canDowngradeToPlan, effectiveLimits, SUBSCRIPTION_STATUS, type PlanLimits } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
 import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
 import { SuperAdminReasonDto } from './dto/super-admin-reason.dto';
+import { SetTenantLimitsDto } from './dto/set-tenant-limits.dto';
 import { AuthService } from '../auth/auth.service';
 import { ListAuditDto } from './dto/list-audit.dto';
 import {
@@ -164,6 +165,8 @@ export class SuperAdminService {
             status: true,
             trialEndsAt: true,
             renewalDate: true,
+            maxBranchesOverride: true,
+            maxUsersOverride: true,
             pastDueSince: true,
             cancelledAt: true,
             createdAt: true,
@@ -249,7 +252,12 @@ export class SuperAdminService {
     }
     if (sub.planId === plan.id) throw new BadRequestException('El tenant ya está en ese plan');
 
-    const limits = plan.limits as unknown as PlanLimits;
+    // El override por-tenant sobrevive al cambio de plan: se valida el uso
+    // actual contra el límite del plan nuevo YA sumado el override que tenga.
+    const limits = effectiveLimits(plan.limits as unknown as PlanLimits, {
+      maxBranches: sub.maxBranchesOverride,
+      maxUsers: sub.maxUsersOverride,
+    });
     const [branchCount, userCount] = await Promise.all([
       this.prisma.branch.count({ where: { tenantId } }),
       this.prisma.user.count({ where: { tenantId } }),
@@ -436,6 +444,43 @@ export class SuperAdminService {
     });
 
     return { ok: true as const, email: owner.email };
+  }
+
+  /**
+   * Override de límites por-tenant: darle a un restaurante puntual más (o menos)
+   * sucursales/usuarios que su plan, sin cambiarle el plan. `null` en un campo
+   * quita el override. El enforcement (billing) usa `effectiveLimits`, así que el
+   * override tiene efecto en todos lados (alta de sucursal/usuario, cambio de plan).
+   */
+  async setTenantLimits(tenantId: string, dto: SetTenantLimitsDto, superAdminId: string) {
+    await this.assertTenantExists(tenantId);
+
+    const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
+    if (!sub) throw new NotFoundException('Este tenant no tiene una suscripción');
+
+    const touchesBranches = dto.maxBranchesOverride !== undefined;
+    const touchesUsers = dto.maxUsersOverride !== undefined;
+    if (!touchesBranches && !touchesUsers) {
+      throw new BadRequestException('Indicá al menos un límite (sucursales o usuarios).');
+    }
+
+    const data: Prisma.SubscriptionUpdateInput = {};
+    if (touchesBranches) data.maxBranchesOverride = dto.maxBranchesOverride;
+    if (touchesUsers) data.maxUsersOverride = dto.maxUsersOverride;
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.subscription.update({ where: { id: sub.id }, data, include: { plan: true } }),
+      this.auditCreate(superAdminId, SUPER_ADMIN_AUDIT_ACTION.EditLimits, tenantId, {
+        previous: { maxBranchesOverride: sub.maxBranchesOverride, maxUsersOverride: sub.maxUsersOverride },
+        next: {
+          maxBranchesOverride: touchesBranches ? dto.maxBranchesOverride : sub.maxBranchesOverride,
+          maxUsersOverride: touchesUsers ? dto.maxUsersOverride : sub.maxUsersOverride,
+        },
+        reason: dto.reason,
+      }),
+    ]);
+
+    return updated;
   }
 
   // ------------------------------------------------------------- métricas

@@ -14,6 +14,7 @@ import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
 import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
 import { SuperAdminReasonDto } from './dto/super-admin-reason.dto';
+import { SetTenantLimitsDto } from './dto/set-tenant-limits.dto';
 import { ListAuditDto } from './dto/list-audit.dto';
 
 /**
@@ -123,6 +124,17 @@ export class SuperAdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.superAdmin.resetOwnerPassword(id, dto, user.id);
+  }
+
+  // Override de límites por-tenant (más/menos sucursales o usuarios que el plan).
+  @Throttle(strictThrottle(10))
+  @Patch('tenants/:id/limits')
+  setTenantLimits(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetTenantLimitsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.superAdmin.setTenantLimits(id, dto, user.id);
   }
 
   // --- Reportes/sugerencias de los restaurantes (ver SupportModule) ---

@@ -10,6 +10,7 @@ import {
 import {
   canCreateBranch,
   canDowngradeToPlan,
+  effectiveLimits,
   type PlanFeatures,
   type PlanLimits,
   type SubscriptionProviderAdapter,
@@ -76,7 +77,10 @@ export class BillingService {
       where: { tenantId: this.tenantPrisma.tenantId },
       include: { plan: true, pendingPlan: true },
     });
-    const limits = sub.plan.limits as unknown as PlanLimits;
+    const limits = effectiveLimits(sub.plan.limits as unknown as PlanLimits, {
+      maxBranches: sub.maxBranchesOverride,
+      maxUsers: sub.maxUsersOverride,
+    });
     const [branchCount, userCount] = await Promise.all([
       this.tenantPrisma.client.branch.count(),
       this.tenantPrisma.client.user.count({ where: { active: true } }),
@@ -140,7 +144,10 @@ export class BillingService {
     // problema de billing — fail-open.
     if (!sub) return;
 
-    const limits = sub.plan.limits as unknown as PlanLimits;
+    const limits = effectiveLimits(sub.plan.limits as unknown as PlanLimits, {
+      maxBranches: sub.maxBranchesOverride,
+      maxUsers: sub.maxUsersOverride,
+    });
     const branchCount = await this.tenantPrisma.client.branch.count();
     if (!canCreateBranch(branchCount, limits.maxBranches)) {
       throw new ConflictException({
@@ -171,7 +178,10 @@ export class BillingService {
     // puede dejar al restaurante sin poder operar.
     if (!sub) return;
 
-    const limits = sub.plan.limits as unknown as PlanLimits;
+    const limits = effectiveLimits(sub.plan.limits as unknown as PlanLimits, {
+      maxBranches: sub.maxBranchesOverride,
+      maxUsers: sub.maxUsersOverride,
+    });
     const userCount = await this.tenantPrisma.client.user.count({ where: { active: true } });
     if (userCount >= limits.maxUsers) {
       throw new ConflictException({
@@ -379,7 +389,10 @@ export class BillingService {
     }
 
     {
-      const limits = plan.limits as unknown as PlanLimits;
+      const limits = effectiveLimits(plan.limits as unknown as PlanLimits, {
+        maxBranches: sub.maxBranchesOverride,
+        maxUsers: sub.maxUsersOverride,
+      });
       const branchCount = await this.tenantPrisma.client.branch.count();
       if (!canDowngradeToPlan(branchCount, limits.maxBranches)) {
         throw new ConflictException({

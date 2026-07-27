@@ -63,6 +63,11 @@ export default function TenantDetailPage() {
   const [impersonateReason, setImpersonateReason] = useState('');
   const [resetReason, setResetReason] = useState('');
 
+  // Override de límites por-tenant. Vacío = usar el límite del plan.
+  const [overrideBranches, setOverrideBranches] = useState('');
+  const [overrideUsers, setOverrideUsers] = useState('');
+  const [limitsReason, setLimitsReason] = useState('');
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -76,6 +81,9 @@ export default function TenantDetailPage() {
       setTenant(t);
       setPlans(p);
       setSelectedPlanId(t.subscription?.plan.id ?? '');
+      // Prefill de los override con lo que ya tenga (blanco = usar el del plan).
+      setOverrideBranches(t.subscription?.maxBranchesOverride?.toString() ?? '');
+      setOverrideUsers(t.subscription?.maxUsersOverride?.toString() ?? '');
     } catch (err) {
       setError((err as ApiError).message);
     }
@@ -186,6 +194,28 @@ export default function TenantDetailPage() {
       router.push('/admin');
     } catch (err) {
       setError((err as ApiError).message);
+      setSaving(false);
+    }
+  }
+
+  async function onSetLimits(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      // '' → null (usar el límite del plan); número → ese override.
+      await api.patch(`/super-admin/tenants/${id}/limits`, {
+        maxBranchesOverride: overrideBranches.trim() === '' ? null : Number(overrideBranches),
+        maxUsersOverride: overrideUsers.trim() === '' ? null : Number(overrideUsers),
+        reason: limitsReason.trim(),
+      });
+      setNotice('Límites del tenant actualizados.');
+      setLimitsReason('');
+      await load();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
       setSaving(false);
     }
   }
@@ -487,6 +517,74 @@ export default function TenantDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ------------------------------------------------------ editar límites */}
+      {sub && (
+        <form onSubmit={onSetLimits} className="panel mb-6 p-5">
+          <h2 className="mb-1 font-heading text-lg font-semibold">Límites del tenant</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Override por-tenant: dale más (o menos) sucursales/usuarios que el plan, sin cambiárselo. Dejá un
+            campo en blanco para usar el límite del plan
+            {sub.plan.limits && (
+              <>
+                {' '}(<span className="tabular">{sub.plan.limits.maxBranches}</span> suc. /{' '}
+                <span className="tabular">{sub.plan.limits.maxUsers}</span> usuarios)
+              </>
+            )}
+            .
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="ovBranches">
+                Sucursales (override)
+              </label>
+              <input
+                id="ovBranches"
+                type="number"
+                min={1}
+                value={overrideBranches}
+                onChange={(e) => setOverrideBranches(e.target.value)}
+                placeholder={sub.plan.limits ? `Plan: ${sub.plan.limits.maxBranches}` : 'Usar plan'}
+                className="input w-full"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="ovUsers">
+                Usuarios (override)
+              </label>
+              <input
+                id="ovUsers"
+                type="number"
+                min={1}
+                value={overrideUsers}
+                onChange={(e) => setOverrideUsers(e.target.value)}
+                placeholder={sub.plan.limits ? `Plan: ${sub.plan.limits.maxUsers}` : 'Usar plan'}
+                className="input w-full"
+              />
+            </div>
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <label className="label" htmlFor="limitsReason">
+              Motivo <span className="text-error">*</span>
+            </label>
+            <input
+              id="limitsReason"
+              value={limitsReason}
+              onChange={(e) => setLimitsReason(e.target.value)}
+              maxLength={300}
+              placeholder="Ej: le sumo 2 sucursales por convenio"
+              className="input w-full"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={saving || limitsReason.trim().length === 0}
+            className="btn btn-primary mt-3 w-full sm:w-auto"
+          >
+            {saving ? 'Guardando…' : 'Guardar límites'}
+          </button>
+        </form>
       )}
 
       {/* ------------------------------------------------ acciones de soporte */}

@@ -24,6 +24,7 @@ export const SUPER_ADMIN_AUDIT_ACTION = {
   SetSubscriptionDates: 'SET_SUBSCRIPTION_DATES',
   Impersonate: 'IMPERSONATE',
   ResetOwnerPassword: 'RESET_OWNER_PASSWORD',
+  EditLimits: 'EDIT_LIMITS',
 } as const;
 
 export type SuperAdminAuditAction =

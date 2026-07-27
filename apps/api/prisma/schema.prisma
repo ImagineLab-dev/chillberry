@@ -1527,6 +1527,12 @@ model Subscription {
   providerSubscriptionId String?       @unique @map("provider_subscription_id")
   trialEndsAt   DateTime?          @map("trial_ends_at")
   renewalDate   DateTime?          @map("renewal_date")
+  /// Overrides de límites por-tenant que fija el super-admin (más sucursales/
+  /// usuarios que el plan, para un cliente puntual). `null` = usar el del plan.
+  /// Sobreviven a los cambios de plan: son una concesión al tenant. Ver
+  /// `effectiveLimits` en @chillberry/domain.
+  maxBranchesOverride Int?           @map("max_branches_override")
+  maxUsersOverride    Int?           @map("max_users_override")
   pastDueSince  DateTime?          @map("past_due_since")
   cancelledAt   DateTime?          @map("cancelled_at")
   createdAt     DateTime           @default(now()) @map("created_at")

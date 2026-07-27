@@ -58,6 +58,8 @@ export type TenantDetail = {
     status: SubscriptionStatus;
     trialEndsAt: string | null;
     renewalDate: string | null;
+    maxBranchesOverride: number | null;
+    maxUsersOverride: number | null;
     pastDueSince: string | null;
     cancelledAt: string | null;
     createdAt: string;
