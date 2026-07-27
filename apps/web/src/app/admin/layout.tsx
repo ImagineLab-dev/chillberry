@@ -12,12 +12,12 @@ import {
   ChefHat,
   ChevronDown,
   Contact,
-  ExternalLink,
   HelpCircle,
   LayoutDashboard,
   LogOut,
   Menu,
   MessageSquarePlus,
+  MonitorSmartphone,
   Palette,
   QrCode,
   ReceiptText,
@@ -123,10 +123,10 @@ function TerminalMenu({ onNavigate }: { onNavigate?: () => void }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="btn btn-ghost min-h-[44px] w-full justify-between md:min-h-0"
+        className="btn btn-primary min-h-[44px] w-full justify-between md:min-h-0"
       >
         <span className="flex items-center gap-2">
-          <ExternalLink className="h-4 w-4 shrink-0" />
+          <MonitorSmartphone className="h-4 w-4 shrink-0" />
           Abrir terminal
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
