@@ -384,8 +384,8 @@
     background-color: hsl(var(--surface));
     color: hsl(var(--foreground));
     padding: 0.5rem 1rem;
-    /* Fuente de body, NO la display: Space Grotesk en cada botón se lee como
-       dos fuentes compitiendo. La display queda para h1-h3 y cifras de stat. */
+    /* Fuente de body, NO la display: Hanken Grotesk en cada botón se lee como
+       dos fuentes compitiendo. La display queda para h1-h3; las cifras van mono. */
     font-size: 0.875rem;
     font-weight: 500;
     line-height: 1.25rem;

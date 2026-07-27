@@ -69,7 +69,7 @@ export default function SurveyPage({ params }: { params: Promise<{ token: string
   }
 
   // Color de marca del restaurante para las estrellas/botón; cae al violeta.
-  const accent = survey?.brandColor || 'var(--primary, #d41c6f)';
+  const accent = survey?.brandColor || 'var(--primary, #5533DB)';
   const shown = hover || rating;
 
   return (

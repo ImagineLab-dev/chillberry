@@ -23,7 +23,7 @@ export type CartaHeaderStyle = 'gradiente' | 'imagen' | 'solido';
  * cargar Playfair/Oswald/Nunito para que queden exactas.
  */
 export const CARTA_FONTS: Record<CartaFont, { label: string; stack: string }> = {
-  moderna: { label: 'Moderna', stack: "var(--font-body), 'DM Sans', system-ui, sans-serif" },
+  moderna: { label: 'Moderna', stack: "var(--font-body), 'Plus Jakarta Sans', system-ui, sans-serif" },
   clasica: { label: 'Clásica', stack: "Georgia, 'Times New Roman', serif" },
   redondeada: { label: 'Redondeada', stack: "'Nunito', 'Trebuchet MS', system-ui, sans-serif" },
   elegante: { label: 'Elegante', stack: "'Playfair Display', Georgia, serif" },
