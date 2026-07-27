@@ -20,7 +20,14 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 
 type Branch = { id: string; name: string };
-type ActiveOrder = { id: string; status: string; total: string; billRequestedAt: string | null; createdAt: string };
+type ActiveOrder = {
+  id: string;
+  status: string;
+  total: string;
+  billRequestedAt: string | null;
+  billRequestNote: string | null;
+  createdAt: string;
+};
 type TableRow = { id: string; code: string; status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'; capacity: number | null; orders: ActiveOrder[] };
 type MenuItemRow = {
   id: string;
@@ -37,6 +44,7 @@ type OrderDetail = {
   status: string;
   total: string;
   billRequestedAt: string | null;
+  billRequestNote: string | null;
   table: { id: string; code: string } | null;
   items: { id: string; quantity: number; unitPrice: string; round: number; menuItem: { name: string } }[];
 };
@@ -625,6 +633,14 @@ export default function WaiterPage() {
                   )}
                 </button>
               </div>
+
+              {/* Nota que dejó el comensal al pedir la cuenta desde su QR
+                  (propina / dividir en N / medio de pago). */}
+              {orderDetail.billRequestNote && (
+                <p className="mt-2 rounded-md bg-warn/15 px-3 py-2 text-sm text-warn-foreground">
+                  {orderDetail.billRequestNote}
+                </p>
+              )}
 
               <div className="mt-4 border-t border-border pt-3">
                 <p className="mb-2 font-heading text-sm font-medium">Dividir cuenta (por persona)</p>

@@ -14,11 +14,31 @@ import { estadoDeBloqueo } from '../billing/subscription-estado';
 import { tenantContext } from '../../common/tenant-context/tenant-context';
 import { TurnstileService } from '../../common/turnstile/turnstile.service';
 import { KitchenService } from '../kitchen/kitchen.service';
+import { KitchenGateway } from '../kitchen/kitchen.gateway';
 import { DeliveryService } from '../delivery/delivery.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { ModifiersService } from './modifiers.service';
 import { CreateGuestOrderDto } from './dto/create-guest-order.dto';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
+import { BillPayMethod, RequestBillDto } from './dto/request-bill.dto';
+
+/** Nota legible para el staff a partir de lo que eligió el comensal al pedir la
+ *  cuenta. Sin montos absolutos: solo %/conteos, que no envejecen si la mesa
+ *  sigue consumiendo y no "cobran" nada desde acá (el staff aplica al cobrar). */
+function buildBillRequestNote(dto: RequestBillDto): string {
+  const parts = ['Cuenta pedida desde la mesa'];
+  if (dto.tipPercent && dto.tipPercent > 0) parts.push(`Propina ${dto.tipPercent}%`);
+  if (dto.splitCount && dto.splitCount > 1) parts.push(`Dividir en ${dto.splitCount}`);
+  if (dto.payMethod) {
+    const label: Record<BillPayMethod, string> = {
+      [BillPayMethod.EFECTIVO]: 'Efectivo',
+      [BillPayMethod.TARJETA]: 'Tarjeta',
+      [BillPayMethod.QR]: 'QR',
+    };
+    parts.push(`Paga: ${label[dto.payMethod]}`);
+  }
+  return parts.join(' · ');
+}
 
 /**
  * Todo lo que ve/hace un cliente anónimo que escaneó el QR de una mesa —
@@ -32,6 +52,7 @@ export class PublicMenuService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kitchen: KitchenService,
+    private readonly kitchenGateway: KitchenGateway,
     private readonly turnstile: TurnstileService,
     private readonly modifiers: ModifiersService,
     private readonly delivery: DeliveryService,
@@ -414,6 +435,51 @@ export class PublicMenuService {
       total: orders.reduce((sum, o) => sum + o.owed, 0),
       orders,
     };
+  }
+
+  /**
+   * "Pedir la cuenta" desde el QR de la mesa. Marca TODOS los pedidos abiertos de
+   * la mesa como cuenta pedida (mismo `billRequestedAt` que usa el mozo, así la
+   * Caja y la app del Mesero ya lo muestran sin tocar su código) y guarda una
+   * nota con lo que eligió el comensal (propina %, dividir en N, medio de pago).
+   *
+   * NO mueve plata: el cobro real lo hace el staff como siempre. La nota va con
+   * porcentajes/conteos y NUNCA montos absolutos: si la mesa sigue pidiendo, un
+   * monto quedaría viejo; el % se mantiene válido y evita "cobrar" desde acá.
+   */
+  async requestBillFromQr(qrToken: string, dto: RequestBillDto) {
+    const table = await this.prisma.table.findUnique({
+      where: { qrToken },
+      include: {
+        orders: {
+          where: { status: { in: ['WAITING', 'ACCEPTED', 'PREPARING', 'READY'] } },
+          select: { id: true, total: true },
+        },
+      },
+    });
+    if (!table) throw new NotFoundException('Código QR no válido');
+    if (table.orders.length === 0) {
+      throw new BadRequestException('Todavía no hay consumos en esta mesa para pedir la cuenta.');
+    }
+
+    const note = buildBillRequestNote(dto);
+    const now = new Date();
+    await this.prisma.order.updateMany({
+      where: { id: { in: table.orders.map((o) => o.id) } },
+      data: { billRequestedAt: now, billRequestNote: note },
+    });
+
+    // Aviso EN VIVO a la Caja de la sucursal — igual que cuando la pide el mozo.
+    // Best-effort: si el socket falla, la cuenta ya quedó marcada en la BD y la
+    // Caja/el Mesero la ven igual al refrescar. Nunca rompe el request.
+    const totalOwed = table.orders.reduce((sum, o) => sum + Number(o.total), 0);
+    this.kitchenGateway.emitToCash(table.branchId, 'cash:bill-requested', {
+      tableCode: table.code,
+      total: totalOwed,
+      note,
+    });
+
+    return { ok: true, note };
   }
 
   async getOrderStatus(orderId: string) {

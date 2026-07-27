@@ -71,6 +71,8 @@ type PendingOrder = {
   // backend). Puede venir null: mesa sin identificar, takeaway anónimo, etc.
   customerPhone: string | null;
   billRequestedAt: string | null;
+  /** Nota que dejó el comensal al pedir la cuenta desde el QR (propina/split/pago). */
+  billRequestNote: string | null;
   table: { code: string } | null;
   items: { id: string; quantity: number; unitPrice: string; menuItem: { name: string } }[];
   billSplits: { id: string; label: string; amount: string; paid: boolean }[];
@@ -939,9 +941,12 @@ export default function PosPage() {
                       <span className="tabular font-medium">{formatMoney(o.total, countryCode)}</span>
                     </div>
                     {o.billRequestedAt && (
-                      <Badge tone="warn" className="mt-1.5">
-                        Cuenta solicitada
-                      </Badge>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="warn">Cuenta solicitada</Badge>
+                        {o.billRequestNote && (
+                          <span className="text-xs text-muted-foreground">{o.billRequestNote}</span>
+                        )}
+                      </div>
                     )}
                   </button>
                 </li>

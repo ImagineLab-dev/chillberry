@@ -173,6 +173,13 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
   const [account, setAccount] = useState<TableAccount | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
+  // "Pedir la cuenta" desde la mesa: propina %, dividir en N, medio de pago.
+  const [tipPercent, setTipPercent] = useState(0);
+  const [splitCount, setSplitCount] = useState(1);
+  const [payMethod, setPayMethod] = useState<'EFECTIVO' | 'TARJETA' | 'QR' | null>(null);
+  const [billRequesting, setBillRequesting] = useState(false);
+  const [billRequested, setBillRequested] = useState(false);
+  const [billRequestError, setBillRequestError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -360,6 +367,8 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
     setAccountOpen(true);
     setAccountLoading(true);
     setAccountError(null);
+    setBillRequested(false);
+    setBillRequestError(null);
     try {
       const acc = await api.get<TableAccount>(`/public/menu/${qrToken}/account`, { publicEndpoint: true });
       setAccount(acc);
@@ -369,6 +378,35 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
       setAccountLoading(false);
     }
   }
+
+  // Avisa al local que la mesa pide la cuenta (con propina/split/pago elegidos).
+  // No cobra: marca los pedidos como "cuenta pedida" y el staff cobra como siempre.
+  async function requestBill() {
+    setBillRequesting(true);
+    setBillRequestError(null);
+    try {
+      await api.post(
+        `/public/menu/${qrToken}/request-bill`,
+        {
+          ...(tipPercent > 0 ? { tipPercent } : {}),
+          ...(splitCount > 1 ? { splitCount } : {}),
+          ...(payMethod ? { payMethod } : {}),
+        },
+        { publicEndpoint: true },
+      );
+      setBillRequested(true);
+    } catch (err) {
+      setBillRequestError((err as ApiError).message);
+    } finally {
+      setBillRequesting(false);
+    }
+  }
+
+  // Derivados de la cuenta para la propina/división (money-safety: mostrar, no cobrar).
+  const billOwed = account ? Number(account.total) : 0;
+  const billTipAmount = Math.round((billOwed * tipPercent) / 100);
+  const billTotalWithTip = billOwed + billTipAmount;
+  const billPerPerson = splitCount > 1 ? billTotalWithTip / splitCount : null;
 
   if (error) {
     return (
@@ -735,6 +773,138 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
                         </ul>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Pedir la cuenta: propina + dividir + medio de pago. No cobra
+                    nada acá (el staff cobra como siempre); avisa a Caja/Mozo. */}
+                {billOwed > 0 && (
+                  <div className="mt-6 border-t border-border pt-5">
+                    {billRequested ? (
+                      <Alert tone="ok">
+                        ¡Listo! Ya le avisamos al local que pedís la cuenta. En un momento se acercan a cobrar.
+                      </Alert>
+                    ) : (
+                      <>
+                        <h3 className="font-heading text-base font-semibold text-foreground">Pedir la cuenta</h3>
+
+                        {/* Propina */}
+                        <div className="mt-3">
+                          <span className="label mb-1.5 block">
+                            Propina <span className="font-normal text-muted-foreground">(opcional)</span>
+                          </span>
+                          <div className="flex flex-wrap gap-2" role="group" aria-label="Propina">
+                            {[0, 10, 15, 20].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setTipPercent(p)}
+                                aria-pressed={tipPercent === p}
+                                className={`btn btn-sm ${tipPercent === p ? 'btn-primary' : ''}`}
+                              >
+                                {p === 0 ? 'Sin propina' : `${p}%`}
+                              </button>
+                            ))}
+                          </div>
+                          {tipPercent > 0 && (
+                            <p className="mt-1.5 text-sm text-muted-foreground">
+                              Propina:{' '}
+                              <span className="tabular text-foreground">
+                                {formatMoney(billTipAmount, account.countryCode)}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Dividir entre N */}
+                        <div className="mt-4">
+                          <span className="label mb-1.5 block">Dividir la cuenta</span>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSplitCount((n) => Math.max(1, n - 1))}
+                                className="btn btn-icon h-11 w-11"
+                                aria-label="Menos personas"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </button>
+                              <span className="tabular w-20 text-center text-base font-semibold text-foreground">
+                                {splitCount === 1 ? '1 persona' : `${splitCount} pers.`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSplitCount((n) => Math.min(50, n + 1))}
+                                className="btn btn-icon h-11 w-11"
+                                aria-label="Más personas"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {billPerPerson != null && (
+                              <span className="text-sm text-muted-foreground">
+                                Cada uno:{' '}
+                                <span className="tabular font-semibold text-foreground">
+                                  {formatMoney(billPerPerson, account.countryCode)}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Medio de pago preferido */}
+                        <div className="mt-4">
+                          <span className="label mb-1.5 block">
+                            ¿Cómo pagás? <span className="font-normal text-muted-foreground">(opcional)</span>
+                          </span>
+                          <div className="flex flex-wrap gap-2" role="group" aria-label="Medio de pago">
+                            {(
+                              [
+                                ['EFECTIVO', 'Efectivo'],
+                                ['TARJETA', 'Tarjeta'],
+                                ['QR', 'QR'],
+                              ] as const
+                            ).map(([val, lbl]) => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setPayMethod((m) => (m === val ? null : val))}
+                                aria-pressed={payMethod === val}
+                                className={`btn btn-sm ${payMethod === val ? 'btn-primary' : ''}`}
+                              >
+                                {lbl}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Total con propina — el número que se va a cobrar. */}
+                        {tipPercent > 0 && (
+                          <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                            <span className="text-sm text-muted-foreground">Total con propina</span>
+                            <span className="tabular font-heading text-lg font-semibold text-foreground">
+                              {formatMoney(billTotalWithTip, account.countryCode)}
+                            </span>
+                          </div>
+                        )}
+
+                        {billRequestError && (
+                          <Alert tone="error" className="mt-3">
+                            {billRequestError}
+                          </Alert>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={requestBill}
+                          disabled={billRequesting}
+                          className="btn btn-primary btn-lg mt-4 w-full"
+                        >
+                          <Receipt className="h-5 w-5" aria-hidden="true" />
+                          {billRequesting ? 'Avisando…' : 'Pedir la cuenta'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </>

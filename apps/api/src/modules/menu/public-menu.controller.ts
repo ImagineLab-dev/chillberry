@@ -7,6 +7,7 @@ import { PublicMenuService } from './public-menu.service';
 import { CreateGuestOrderDto } from './dto/create-guest-order.dto';
 import { CreatePublicOrderDto } from './dto/create-public-order.dto';
 import { DeliveryFeePreviewDto } from './dto/delivery-fee-preview.dto';
+import { RequestBillDto } from './dto/request-bill.dto';
 
 /**
  * Todo lo que ve/hace un cliente anónimo — SIN auth, como `TrackingController`
@@ -85,6 +86,16 @@ export class PublicMenuController {
   @Get(':qrToken/account')
   getTableAccount(@Param('qrToken') qrToken: string) {
     return this.publicMenu.getTableAccount(qrToken);
+  }
+
+  // "Pedir la cuenta" desde el QR: marca los pedidos abiertos de la mesa como
+  // cuenta pedida (igual que cuando la pide el mozo) y avisa a la Caja en vivo.
+  // Throttle estricto: es escritura pública, no queremos que spameen al staff.
+  @Public()
+  @Throttle(strictThrottle(10))
+  @Post(':qrToken/request-bill')
+  requestBill(@Param('qrToken') qrToken: string, @Body() dto: RequestBillDto) {
+    return this.publicMenu.requestBillFromQr(qrToken, dto);
   }
 
   @Public()
