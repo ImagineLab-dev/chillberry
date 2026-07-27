@@ -281,6 +281,33 @@
     scroll-behavior: smooth;
   }
 
+  /* Barra de scroll propia, acorde a la marca: fina, redondeada, pulgar violeta
+     tenue sobre riel transparente — reemplaza la barra gris del navegador (con
+     flechas) por algo que combina. Usa `--primary`, así en cada carta pública
+     toma el color del restaurante. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.35) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    /* `background-clip: content-box` + borde transparente = pulgar más finito
+       con aire a los lados, en vez de pegado al borde. */
+    background-color: hsl(var(--primary) / 0.3);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--primary) / 0.5);
+  }
+
   /* Scroll horizontal sin barra visible (barra de categorías de la carta). */
   .no-scrollbar {
     scrollbar-width: none;
