@@ -377,7 +377,7 @@ export default function WaiterPage() {
   const tableTotal = (selectedTable?.orders ?? []).reduce((sum, o) => sum + Number(o.total), 0);
 
   return (
-    <main className="min-h-screen bg-background p-4">
+    <main className="min-h-screen bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
       <SubscriptionBanner />
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

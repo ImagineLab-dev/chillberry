@@ -234,7 +234,7 @@ export default function KitchenPage() {
     tasks.filter((t) => t.status === status && (stationFilter === 'ALL' || t.station.type === stationFilter));
 
   return (
-    <main className="flex min-h-screen flex-col bg-background text-foreground">
+    <main className="flex min-h-screen flex-col bg-background pt-[env(safe-area-inset-top)] text-foreground">
       <SubscriptionBanner />
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
         <div className="flex items-center gap-3">
@@ -292,7 +292,7 @@ export default function KitchenPage() {
         </div>
       </header>
 
-      <div className="grid flex-1 grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-3 overflow-x-auto p-4">
+      <div className="grid flex-1 grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-3 overflow-x-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {/* `card-dense`: escala de clay contenida. Con 40 comandas en 4 columnas,
             el radio y la sombra generosos se comen el contenido, y esto se lee a
             2 metros con las manos ocupadas. */}
