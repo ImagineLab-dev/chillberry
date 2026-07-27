@@ -275,6 +275,20 @@
     animation-delay: 340ms;
   }
 
+  /* Scroll suave al saltar a una categoría de la carta por ancla (#cat-…).
+     El bloque de reduced-motion de abajo lo devuelve a 'auto' para quien lo pida. */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Scroll horizontal sin barra visible (barra de categorías de la carta). */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Accesibilidad: nadie se marea por nuestras animaciones. */
   @media (prefers-reduced-motion: reduce) {
     *,

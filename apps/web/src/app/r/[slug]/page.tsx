@@ -900,9 +900,32 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
           <p className="text-base text-muted-foreground">Nada coincide con “{menuSearch}”.</p>
         )}
 
+        {/* Barra de categorías: en cartas largas deja saltar a cada sección sin
+            scrollear a mano. Sticky arriba, scroll horizontal, sólo si hay más de
+            una categoría con productos. Se oculta al buscar (ahí no hay secciones
+            que saltar). Son anclas <a> → sin estado extra ni JS. */}
+        {!searchQuery && visibleCategories.filter((c) => c.items.length > 0).length > 1 && (
+          <nav
+            aria-label="Categorías de la carta"
+            className="no-scrollbar sticky top-0 z-10 -mx-4 mb-6 flex gap-2 overflow-x-auto border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur"
+          >
+            {visibleCategories
+              .filter((c) => c.items.length > 0)
+              .map((category) => (
+                <a
+                  key={category.id}
+                  href={`#cat-${category.id}`}
+                  className="btn btn-sm shrink-0 whitespace-nowrap"
+                >
+                  {category.name}
+                </a>
+              ))}
+          </nav>
+        )}
+
         <div className="space-y-8">
           {visibleCategories.map((category) => (
-            <section key={category.id}>
+            <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-16">
               <h2 className="mb-3 font-heading text-xl font-semibold tracking-tight text-foreground">{category.name}</h2>
               <div className={isGridLayout ? 'grid grid-cols-2 gap-3 sm:grid-cols-3' : 'space-y-3'}>
                 {category.items.map((item) => {
