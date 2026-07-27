@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { strictThrottle } from '../../common/security/throttle.util';
 import { USER_ROLE } from '@chillberry/domain';
@@ -12,6 +13,7 @@ import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
 import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
+import { SuperAdminReasonDto } from './dto/super-admin-reason.dto';
 import { ListAuditDto } from './dto/list-audit.dto';
 
 /**
@@ -94,6 +96,33 @@ export class SuperAdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.superAdmin.setSubscriptionDates(id, dto, user.id);
+  }
+
+  // "Entrar como" el tenant: emite tokens de su dueño para verlo/operarlo.
+  // Throttle duro: cada llamada da acceso a los datos de un cliente.
+  @Throttle(strictThrottle(10))
+  @Post('tenants/:id/impersonate')
+  impersonate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SuperAdminReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ) {
+    return this.superAdmin.impersonate(id, dto, user.id, {
+      userAgent: req.headers['user-agent'] ?? null,
+      ipAddress: req.ip ?? null,
+    });
+  }
+
+  // Dispara el mail de reseteo de contraseña al dueño del tenant.
+  @Throttle(strictThrottle(10))
+  @Post('tenants/:id/reset-owner-password')
+  resetOwnerPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SuperAdminReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.superAdmin.resetOwnerPassword(id, dto, user.id);
   }
 
   // --- Reportes/sugerencias de los restaurantes (ver SupportModule) ---

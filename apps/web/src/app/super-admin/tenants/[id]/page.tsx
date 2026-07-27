@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, Ban, PlayCircle, Store } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Ban, KeyRound, PlayCircle, Store, UserCog } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { startImpersonation } from '@/lib/impersonation';
 import { Alert, Badge, PageHeader, Skeleton } from '@/components/ui';
 import {
   INVOICE_TONE,
@@ -33,6 +34,7 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function TenantDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
@@ -56,6 +58,10 @@ export default function TenantDetailPage() {
   const [newTrialEndsAt, setNewTrialEndsAt] = useState('');
   const [newRenewalDate, setNewRenewalDate] = useState('');
   const [datesReason, setDatesReason] = useState('');
+
+  // Acciones de soporte: impersonar y resetear la clave del dueño. Motivo obligatorio.
+  const [impersonateReason, setImpersonateReason] = useState('');
+  const [resetReason, setResetReason] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -157,6 +163,43 @@ export default function TenantDetailPage() {
       setNewRenewalDate('');
       setDatesReason('');
       await load();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onImpersonate() {
+    setError(null);
+    setSaving(true);
+    try {
+      const res = await api.post<{
+        accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        impersonating: { tenantName: string };
+      }>(`/super-admin/tenants/${id}/impersonate`, { reason: impersonateReason.trim() });
+      // Guarda la sesión del super-admin y entra como el tenant. No se hace
+      // setSaving(false): estamos navegando fuera de esta página.
+      startImpersonation(res, { tenantName: res.impersonating.tenantName });
+      router.push('/admin');
+    } catch (err) {
+      setError((err as ApiError).message);
+      setSaving(false);
+    }
+  }
+
+  async function onResetOwnerPassword() {
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      const res = await api.post<{ email: string }>(`/super-admin/tenants/${id}/reset-owner-password`, {
+        reason: resetReason.trim(),
+      });
+      setNotice(`Le mandamos el mail de reseteo a ${res.email}. El dueño pone su clave nueva desde ahí.`);
+      setResetReason('');
     } catch (err) {
       setError((err as ApiError).message);
     } finally {
@@ -445,6 +488,76 @@ export default function TenantDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------ acciones de soporte */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <div className="panel p-5">
+          <h2 className="mb-1 flex items-center gap-2 font-heading text-lg font-semibold">
+            <UserCog className="h-5 w-5 text-primary" aria-hidden="true" />
+            Entrar como el restaurante
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Abrís el panel de {tenant.name} como su dueño, sin pedirle la clave, para ver o arreglar lo que
+            reporta. Queda en la auditoría.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="impReason">
+                Motivo <span className="text-error">*</span>
+              </label>
+              <input
+                id="impReason"
+                value={impersonateReason}
+                onChange={(e) => setImpersonateReason(e.target.value)}
+                maxLength={300}
+                placeholder="Ej: revisar por qué no le entra un pedido"
+                className="input w-full"
+              />
+            </div>
+            <button
+              onClick={onImpersonate}
+              disabled={saving || impersonateReason.trim().length === 0}
+              className="btn btn-primary w-full"
+            >
+              <UserCog className="h-4 w-4" />
+              {saving ? 'Entrando…' : 'Entrar como este restaurante'}
+            </button>
+          </div>
+        </div>
+
+        <div className="panel p-5">
+          <h2 className="mb-1 flex items-center gap-2 font-heading text-lg font-semibold">
+            <KeyRound className="h-5 w-5 text-primary" aria-hidden="true" />
+            Contraseña del dueño
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Le mandamos al dueño el mail para poner una clave nueva — nunca la ves vos. Útil si quedó afuera.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="resetReason">
+                Motivo <span className="text-error">*</span>
+              </label>
+              <input
+                id="resetReason"
+                value={resetReason}
+                onChange={(e) => setResetReason(e.target.value)}
+                maxLength={300}
+                placeholder="Ej: el dueño perdió el acceso"
+                className="input w-full"
+              />
+            </div>
+            <button
+              onClick={onResetOwnerPassword}
+              disabled={saving || resetReason.trim().length === 0}
+              className="btn w-full"
+            >
+              <KeyRound className="h-4 w-4" />
+              {saving ? 'Enviando…' : 'Enviar reseteo al dueño'}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* ------------------------------------------ restaurantes y sucursales */}
       <h2 className="mb-3 font-heading text-lg font-semibold">Restaurantes y sucursales</h2>

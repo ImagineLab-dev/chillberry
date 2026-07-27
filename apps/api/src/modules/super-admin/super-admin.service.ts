@@ -6,6 +6,8 @@ import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
 import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
+import { SuperAdminReasonDto } from './dto/super-admin-reason.dto';
+import { AuthService } from '../auth/auth.service';
 import { ListAuditDto } from './dto/list-audit.dto';
 import {
   DEFAULT_PAGE_SIZE,
@@ -57,7 +59,27 @@ function monthKey(date: Date): string {
 
 @Injectable()
 export class SuperAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Reusado para impersonar (emitir tokens de un tenant) y disparar el reseteo
+    // de contraseña del dueño. Ver AuthModule en super-admin.module.ts.
+    private readonly auth: AuthService,
+  ) {}
+
+  /** Dueño (o, si no hay, admin) activo de un tenant — el usuario "cara" del
+   *  restaurante para impersonar o resetear. `null` si no hay ninguno. */
+  private async findTenantOwner(tenantId: string) {
+    return (
+      (await this.prisma.user.findFirst({
+        where: { tenantId, role: 'OWNER', active: true },
+        orderBy: { createdAt: 'asc' },
+      })) ??
+      (await this.prisma.user.findFirst({
+        where: { tenantId, role: 'ADMIN', active: true },
+        orderBy: { createdAt: 'asc' },
+      }))
+    );
+  }
 
   // ------------------------------------------------------------- tenants
 
@@ -352,6 +374,68 @@ export class SuperAdminService {
     ]);
 
     return updated;
+  }
+
+  /**
+   * "Entrar como" un tenant: emite un par de tokens del DUEÑO de ese restaurante
+   * para que el super-admin vea/opere su panel sin pedirle la contraseña. Sirve
+   * para soporte ("no me anda X") sin ida y vuelta.
+   *
+   * Se audita ANTES de emitir el token: si algo falla después, igual queda el
+   * registro de que se inició la impersonación (sobre-auditar es lo correcto en
+   * una acción que da acceso a los datos de un cliente).
+   */
+  async impersonate(
+    tenantId: string,
+    dto: SuperAdminReasonDto,
+    superAdminId: string,
+    meta: { userAgent: string | null; ipAddress: string | null },
+  ) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, ...NOT_SYSTEM_TENANT },
+      select: { id: true, name: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    const target = await this.findTenantOwner(tenantId);
+    if (!target) {
+      throw new NotFoundException('Este tenant no tiene un dueño ni admin activo para entrar como él.');
+    }
+
+    await this.auditCreate(superAdminId, SUPER_ADMIN_AUDIT_ACTION.Impersonate, tenantId, {
+      targetUser: { id: target.id, email: target.email, role: target.role },
+      reason: dto.reason,
+    });
+
+    const pair = await this.auth.issueImpersonationTokens(
+      { id: target.id, tenantId: target.tenantId, email: target.email, role: target.role, branchId: null },
+      meta,
+    );
+
+    return {
+      ...pair,
+      impersonating: { tenantId, tenantName: tenant.name, userId: target.id, email: target.email, role: target.role },
+    };
+  }
+
+  /**
+   * Dispara el reseteo de contraseña del dueño: le manda el MISMO mail que
+   * "olvidé mi contraseña", con un código para poner una clave nueva. El
+   * super-admin NUNCA ve ni fija la contraseña — solo inicia el flujo.
+   */
+  async resetOwnerPassword(tenantId: string, dto: SuperAdminReasonDto, superAdminId: string) {
+    await this.assertTenantExists(tenantId);
+
+    const owner = await this.findTenantOwner(tenantId);
+    if (!owner) throw new NotFoundException('Este tenant no tiene un dueño ni admin activo.');
+
+    await this.auth.sendPasswordResetCode(owner.email);
+    await this.auditCreate(superAdminId, SUPER_ADMIN_AUDIT_ACTION.ResetOwnerPassword, tenantId, {
+      ownerEmail: owner.email,
+      reason: dto.reason,
+    });
+
+    return { ok: true as const, email: owner.email };
   }
 
   // ------------------------------------------------------------- métricas

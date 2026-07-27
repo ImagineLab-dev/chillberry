@@ -384,6 +384,39 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Emite un par de tokens para un usuario ARBITRARIO — SIN validar contraseña.
+   * Uso EXCLUSIVO del panel super-admin para "entrar como" un tenant. La única
+   * protección es que el único caller (SuperAdminController) exige rol
+   * SUPER_ADMIN y audita cada impersonación. NO exponer por endpoint público.
+   */
+  async issueImpersonationTokens(
+    user: { id: string; tenantId: string; email: string; role: string; branchId?: string | null },
+    meta: RequestMeta,
+  ): Promise<TokenPair> {
+    return this.issueTokens(user, meta);
+  }
+
+  /**
+   * Manda el código de reseteo al correo de `email` (mismo mail que "olvidé mi
+   * contraseña"), SIN turnstile: lo dispara el super-admin, no un anónimo. No
+   * revela si la cuenta existe; si no existe o está inactiva, no hace nada.
+   */
+  async sendPasswordResetCode(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (user && user.active) {
+      await this.verification.emitir({
+        email: user.email,
+        purpose: 'PASSWORD_RESET',
+        asunto: 'Tu código para recuperar la cuenta',
+        titulo: 'Recuperá tu cuenta',
+        bajada: `Hola ${user.name}, usá este código para poner una contraseña nueva.`,
+        siNoFuiste:
+          'Si no pediste recuperar la cuenta, ignorá este mensaje: tu contraseña sigue siendo la misma.',
+      });
+    }
+  }
+
   // ----------------------------------------------------------------- helpers
 
   private async issueTokens(

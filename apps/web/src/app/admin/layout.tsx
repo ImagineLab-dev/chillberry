@@ -34,6 +34,7 @@ import { BerryIcon } from '@/components/berry-icon';
 import { SubscriptionBanner } from '@/components/subscription-banner';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { ImpersonationBanner } from '@/components/impersonation-banner';
 
 // Ítems del sidebar que son "hubs" con pestañas adentro (ver *-tabs.tsx): el
 // ítem queda activo cuando estás en cualquiera de sus rutas hijas. La clave es
@@ -270,7 +271,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [drawerOpen]);
 
   return (
-    <div className="flex min-h-screen flex-col gap-4 bg-background p-4 text-foreground md:flex-row">
+    <>
+      <ImpersonationBanner />
+      <div className="flex min-h-screen flex-col gap-4 bg-background p-4 text-foreground md:flex-row">
       {/* Barra superior de móvil. Los márgenes negativos la sangran hasta los
           bordes para que al quedar pegada arriba no se vea contenido pasando
           por el hueco del padding del contenedor. */}
@@ -330,6 +333,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </main>
 
       <CommandPalette />
-    </div>
+      </div>
+    </>
   );
 }

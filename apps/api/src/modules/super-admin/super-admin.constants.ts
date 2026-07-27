@@ -22,6 +22,8 @@ export const SUPER_ADMIN_AUDIT_ACTION = {
   SuspendSubscription: 'SUSPEND_SUBSCRIPTION',
   ReactivateSubscription: 'REACTIVATE_SUBSCRIPTION',
   SetSubscriptionDates: 'SET_SUBSCRIPTION_DATES',
+  Impersonate: 'IMPERSONATE',
+  ResetOwnerPassword: 'RESET_OWNER_PASSWORD',
 } as const;
 
 export type SuperAdminAuditAction =
