@@ -26,7 +26,12 @@ async function bootstrap() {
   // .gitkeep del repo) para que arranque igual sin importar cómo se haya
   // desplegado el container (bind mount vacío, volumen nuevo, etc.).
   mkdirSync(UPLOADS_DIR, { recursive: true });
-  app.useStaticAssets(UPLOADS_DIR, { prefix: '/uploads' });
+  // Prefijo `/api/uploads` (NO `/uploads`): el API vive detrás del proxy bajo
+  // `/api` (setGlobalPrefix('api') + router de Traefik). Servido en `/uploads` a
+  // secas, las imágenes caían en el WEB (Next) → el middleware las redirigía a
+  // /login y la <img> quedaba rota. `useStaticAssets` NO hereda el global prefix,
+  // así que se pone a mano y tiene que coincidir con la URL que arma UploadsController.
+  app.useStaticAssets(UPLOADS_DIR, { prefix: '/api/uploads' });
 
   // Primerísimo middleware: abre el store de AsyncLocalStorage que
   // TenantPrismaService lee más abajo en la cadena (guards, controllers).

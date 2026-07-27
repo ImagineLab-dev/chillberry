@@ -59,6 +59,9 @@ export class UploadsController {
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const env = loadEnv();
-    return { url: `${env.API_BASE_URL}/uploads/${file.filename}` };
+    // `/api/uploads` para que coincida con el prefijo de `useStaticAssets` en
+    // main.ts (el API vive bajo `/api` detrás del proxy). API_BASE_URL es el
+    // origen sin `/api` (ej. https://chillberry.app), así que se agrega acá.
+    return { url: `${env.API_BASE_URL}/api/uploads/${file.filename}` };
   }
 }
