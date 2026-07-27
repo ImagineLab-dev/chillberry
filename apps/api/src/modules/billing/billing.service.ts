@@ -639,11 +639,17 @@ export class BillingService {
         data: {
           planId,
           pendingPlanId: null,
-          status: 'ACTIVE',
+          // Una SUSPENSIÓN la decide el super-admin (fraude/ToS) y NO la revierte
+          // el sancionado: si el tenant estaba suspendido, el cobro se registra
+          // (invoice paga, renewalDate) pero sigue suspendido hasta que el
+          // super-admin lo reactive. `subscribe`/`changePlan` ya tienen este
+          // guard; el webhook lo tiene que tener igual. CANCELLED sí se reanuda
+          // pagando (es decisión del propio cliente).
+          status: sub.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
           renewalDate: periodEnd,
           pastDueSince: null,
-          // Pagar un subscribe explícito ES reanudar: la cancelación programada
-          // queda sin efecto (el CTA "Reanudar/Pagar ahora" termina acá).
+          // Pagar un subscribe explícito ES reanudar una cancelación programada
+          // (el CTA "Reanudar/Pagar ahora" termina acá).
           cancelledAt: null,
         },
       });

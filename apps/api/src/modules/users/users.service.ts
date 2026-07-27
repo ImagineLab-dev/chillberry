@@ -209,6 +209,16 @@ export class UsersService {
     // contra `undefined` y no por truthy.
     if (dto.branchId !== undefined) await this.validarSucursal(dto.branchId);
 
+    // Reactivar un usuario (inactivo -> activo) es, a efectos del plan, un ALTA
+    // de usuario activo: tiene que pasar por el MISMO límite que crear uno. Sin
+    // esto, un tenant en el tope evadía el paywall dando de baja a uno y
+    // reactivando otro (o reactivando al que había desactivado). Solo se chequea
+    // en la TRANSICIÓN (target inactivo): re-guardar un usuario ya activo con
+    // `active:true` es un no-op y no debe contar de más.
+    if (dto.active === true && !target.active) {
+      await this.billing.assertCanCreateUser();
+    }
+
     // La contraseña (reset por owner/admin) no es un campo de User: se hashea y
     // se escribe como `passwordHash`. El resto del dto va tal cual.
     //

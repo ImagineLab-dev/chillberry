@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UtensilsCrossed } from 'lucide-react';
 
 /**
@@ -24,6 +24,9 @@ export function MenuItemImage({
   boxClassName: string;
 }) {
   const [failed, setFailed] = useState(false);
+  // Si cambia la URL (el dueño corrige la foto y la carta se re-fetchea), se
+  // reintenta: sin esto quedaba pegado en el placeholder tras un error viejo.
+  useEffect(() => setFailed(false), [src]);
   if (!src || failed) {
     return (
       <div className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${boxClassName}`}>

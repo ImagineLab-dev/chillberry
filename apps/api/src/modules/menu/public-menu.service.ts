@@ -453,7 +453,10 @@ export class PublicMenuService {
       include: {
         orders: {
           where: { status: { in: ['WAITING', 'ACCEPTED', 'PREPARING', 'READY'] } },
-          select: { id: true, total: true },
+          // Los splits pagados se descuentan del total: si no, el aviso a Caja
+          // mostraría un total BRUTO distinto del que ve el comensal en "mi
+          // cuenta" (que sí resta lo ya pagado, ver getTableAccount).
+          select: { id: true, total: true, billSplits: { select: { amount: true, paid: true } } },
         },
       },
     });
@@ -472,7 +475,11 @@ export class PublicMenuService {
     // Aviso EN VIVO a la Caja de la sucursal — igual que cuando la pide el mozo.
     // Best-effort: si el socket falla, la cuenta ya quedó marcada en la BD y la
     // Caja/el Mesero la ven igual al refrescar. Nunca rompe el request.
-    const totalOwed = table.orders.reduce((sum, o) => sum + Number(o.total), 0);
+    // Total ADEUDADO (total - splits pagados), mismo criterio que getTableAccount.
+    const totalOwed = table.orders.reduce((sum, o) => {
+      const paid = o.billSplits.filter((s) => s.paid).reduce((s, x) => s + Number(x.amount), 0);
+      return sum + Math.max(0, Number(o.total) - paid);
+    }, 0);
     this.kitchenGateway.emitToCash(table.branchId, 'cash:bill-requested', {
       tableCode: table.code,
       total: totalOwed,

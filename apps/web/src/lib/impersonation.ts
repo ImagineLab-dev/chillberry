@@ -24,16 +24,34 @@ function remainingSeconds(accessToken: string | null): number {
   return Math.max(60, payload.exp - Math.floor(Date.now() / 1000));
 }
 
+function readSaved(): Saved | null {
+  if (typeof window === 'undefined') return null;
+  const raw = sessionStorage.getItem(KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Saved;
+  } catch {
+    return null;
+  }
+}
+
 export function startImpersonation(
   pair: { accessToken: string; refreshToken: string; expiresIn: number },
   info: ImpersonationInfo,
 ): void {
-  const saved: Saved = {
-    tenantName: info.tenantName,
-    access: tokens.getAccess() ?? '',
-    refresh: tokens.getRefresh() ?? '',
-    expiresIn: remainingSeconds(tokens.getAccess()),
-  };
+  const existing = readSaved();
+  // Si YA se estaba impersonando, los tokens actuales son de un tenant, no del
+  // super-admin: preservamos los que ya estaban guardados (la vía de vuelta) y
+  // solo actualizamos el nombre. Sin esto, impersonar dos veces seguidas
+  // enterraba la sesión del super-admin (había que re-loguear).
+  const saved: Saved = existing
+    ? { ...existing, tenantName: info.tenantName }
+    : {
+        tenantName: info.tenantName,
+        access: tokens.getAccess() ?? '',
+        refresh: tokens.getRefresh() ?? '',
+        expiresIn: remainingSeconds(tokens.getAccess()),
+      };
   sessionStorage.setItem(KEY, JSON.stringify(saved));
   tokens.set(pair.accessToken, pair.refreshToken, pair.expiresIn);
 }

@@ -70,6 +70,9 @@ export default function TenantDetailPage() {
 
   const load = useCallback(async () => {
     setError(null);
+    // El 409 de límite de plan es de una acción puntual; al recargar (o tras
+    // otra acción exitosa) no tiene por qué seguir mostrándose.
+    setLimitError(null);
     try {
       const [t, p] = await Promise.all([
         api.get<TenantDetail>(`/super-admin/tenants/${id}`),

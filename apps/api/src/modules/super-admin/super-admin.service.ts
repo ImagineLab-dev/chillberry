@@ -260,7 +260,10 @@ export class SuperAdminService {
     });
     const [branchCount, userCount] = await Promise.all([
       this.prisma.branch.count({ where: { tenantId } }),
-      this.prisma.user.count({ where: { tenantId } }),
+      // Solo ACTIVOS — mismo criterio que `assertCanCreateUser`/`changePlan` de
+      // billing. Contar inactivos acá bloqueaba downgrades legítimos con un
+      // PLAN_LIMIT_EXCEEDED falso.
+      this.prisma.user.count({ where: { tenantId, active: true } }),
     ]);
 
     const exceeded: Array<{ resource: string; current: number; limit: number }> = [];
