@@ -369,11 +369,27 @@ export class PublicMenuService {
     // porque no hay JWT. Se establece acá a mano con el tenant derivado del
     // qrToken; el resto de esta misma request queda con el tenant correcto.
     tenantContext.setTenantId(table.tenantId);
-    await this.kitchen.generateTasksForOrder(order.id, order.branchId, order.items);
+    // Si la generación de comandas falla, el pedido quedaría FANTASMA: existe en
+    // la BD pero sin KitchenTask, así que nunca aparece en el KDS ni se cocina, y
+    // el comensal ya lo ve en "mi cuenta". Se compensa cancelándolo y se propaga
+    // el error — mejor un pedido cancelado y un reintento que uno vivo que nadie
+    // atiende.
+    try {
+      await this.kitchen.generateTasksForOrder(order.id, order.branchId, order.items);
+    } catch (err) {
+      await this.prisma.order
+        .update({
+          where: { id: order.id },
+          data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: 'Falló la generación de comandas' },
+        })
+        .catch(() => {});
+      throw err;
+    }
 
-    // Mismo efecto que "abrir mesa" del mesero — un pedido de cliente
-    // también ocupa la mesa.
-    await this.prisma.table.update({ where: { id: table.id }, data: { status: 'OCCUPIED' } });
+    // Mismo efecto que "abrir mesa" del mesero — un pedido de cliente también
+    // ocupa la mesa. Best-effort: las comandas ya se generaron, no vale tirar
+    // 500 por no poder marcar la mesa (la marca el próximo pedido o el mozo).
+    await this.prisma.table.update({ where: { id: table.id }, data: { status: 'OCCUPIED' } }).catch(() => {});
 
     return { orderId: order.id, status: order.status, total: order.total };
   }

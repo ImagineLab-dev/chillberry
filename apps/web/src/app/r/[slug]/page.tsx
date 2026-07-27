@@ -273,12 +273,20 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     estimatedMinutes: number | null;
     minOrderAmount: number | null;
   } | null>(null);
+  // Si el cálculo del envío falla (blip de red o rechazo "fuera de zona"), sin
+  // esto quedaba en "Calculando…" para siempre y Confirmar deshabilitado, sin
+  // aviso ni forma de reintentar. `deliveryQuoteError` muestra el error + un
+  // botón "Reintentar" que bumpea el nonce y re-dispara el efecto.
+  const [deliveryQuoteError, setDeliveryQuoteError] = useState(false);
+  const [deliveryQuoteNonce, setDeliveryQuoteNonce] = useState(0);
   useEffect(() => {
     if (fulfillment !== 'DELIVERY' || !location || menu?.deliveryPricing.mode !== 'BY_DISTANCE') {
       setDeliveryQuote(null);
+      setDeliveryQuoteError(false);
       return;
     }
     let cancelled = false;
+    setDeliveryQuoteError(false);
     api
       .post<{ fee: number; estimatedMinutes: number | null; minOrderAmount: number | null }>(
         `/public/menu/branch/${slug}/delivery-fee`,
@@ -289,12 +297,15 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         if (!cancelled) setDeliveryQuote(r);
       })
       .catch(() => {
-        if (!cancelled) setDeliveryQuote(null);
+        if (!cancelled) {
+          setDeliveryQuote(null);
+          setDeliveryQuoteError(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [fulfillment, location, menu?.deliveryPricing.mode, slug]);
+  }, [fulfillment, location, menu?.deliveryPricing.mode, slug, deliveryQuoteNonce]);
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1295,15 +1306,32 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Envío{isByDistance ? ' (según distancia)' : ''}</span>
                   <span className="tabular text-foreground">
-                    {deliveryFeeNum == null
-                      ? location
-                        ? 'Calculando…'
-                        : 'Fijá tu ubicación'
-                      : deliveryFeeNum > 0
-                        ? formatMoney(deliveryFeeNum, menu.countryCode)
-                        : 'Gratis'}
+                    {isByDistance && deliveryQuoteError && location ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryQuoteNonce((n) => n + 1)}
+                        className="font-medium text-error-foreground underline underline-offset-2"
+                      >
+                        Reintentar
+                      </button>
+                    ) : deliveryFeeNum == null ? (
+                      location ? (
+                        'Calculando…'
+                      ) : (
+                        'Fijá tu ubicación'
+                      )
+                    ) : deliveryFeeNum > 0 ? (
+                      formatMoney(deliveryFeeNum, menu.countryCode)
+                    ) : (
+                      'Gratis'
+                    )}
                   </span>
                 </div>
+              )}
+              {feeApplies && isByDistance && deliveryQuoteError && location && (
+                <p className="text-xs text-error-foreground">
+                  No pudimos calcular el envío a esa ubicación. Reintentá, o movés el pin en el mapa a otro punto.
+                </p>
               )}
               <div className="flex items-center justify-between pt-1">
                 <span className="text-sm text-muted-foreground">Total</span>
