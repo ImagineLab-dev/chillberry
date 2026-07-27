@@ -38,6 +38,7 @@ import {
   type ResolvedHubButton,
 } from '@/lib/public-hub';
 import { Turnstile } from '@/components/turnstile';
+import { MenuItemImage } from '@/components/menu-item-image';
 import { Alert, Badge, EmptyState, Skeleton, type Tone } from '@/components/ui';
 import { guardarPedidoEnCurso, leerPedidoEnCurso, olvidarPedidoEnCurso } from '@/lib/pedido-en-curso';
 
@@ -941,29 +942,18 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                         item.soldOut ? 'opacity-60' : ''
                       }`}
                     >
-                      {resolved.showImages &&
-                        (item.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.imageUrl}
-                            alt={item.name}
-                            loading="lazy"
-                            decoding="async"
-                            className={
-                              isGridLayout
-                                ? 'h-32 w-full shrink-0 rounded-lg object-cover'
-                                : 'h-28 w-28 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32'
-                            }
-                          />
-                        ) : (
-                          <div
-                            className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${
-                              isGridLayout ? 'h-32 w-full' : 'h-28 w-28 sm:h-32 sm:w-32'
-                            }`}
-                          >
-                            <UtensilsCrossed className="h-7 w-7 text-muted-foreground/40" aria-hidden="true" />
-                          </div>
-                        ))}
+                      {resolved.showImages && (
+                        <MenuItemImage
+                          src={item.imageUrl}
+                          alt={item.name}
+                          imgClassName={
+                            isGridLayout
+                              ? 'h-32 w-full shrink-0 rounded-lg object-cover'
+                              : 'h-28 w-28 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32'
+                          }
+                          boxClassName={isGridLayout ? 'h-32 w-full' : 'h-28 w-28 sm:h-32 sm:w-32'}
+                        />
+                      )}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-heading text-base font-semibold text-foreground">{item.name}</h3>

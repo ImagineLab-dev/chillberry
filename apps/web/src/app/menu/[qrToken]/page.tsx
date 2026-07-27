@@ -6,6 +6,7 @@ import { api, type ApiError } from '@/lib/api-client';
 import { formatMoney } from '@chillberry/domain';
 import { cartaThemeStyle, resolveCartaTheme, type CartaTheme } from '@/lib/carta-theme';
 import { Turnstile } from '@/components/turnstile';
+import { MenuItemImage } from '@/components/menu-item-image';
 import { Alert, Badge, EmptyState, Skeleton, type Tone } from '@/components/ui';
 
 type ModifierOptionView = { id: string; name: string; priceDelta: string };
@@ -540,29 +541,18 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
                       key={item.id}
                       className={`card flex ${isGridLayout ? 'flex-col gap-2 p-3' : 'gap-3 p-3 sm:gap-4 sm:p-4'}`}
                     >
-                      {resolved.showImages &&
-                        (item.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.imageUrl}
-                            alt={item.name}
-                            loading="lazy"
-                            decoding="async"
-                            className={
-                              isGridLayout
-                                ? 'h-32 w-full shrink-0 rounded-lg object-cover'
-                                : 'h-28 w-28 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32'
-                            }
-                          />
-                        ) : (
-                          <div
-                            className={`flex shrink-0 items-center justify-center rounded-lg bg-muted ${
-                              isGridLayout ? 'h-32 w-full' : 'h-28 w-28 sm:h-32 sm:w-32'
-                            }`}
-                          >
-                            <UtensilsCrossed className="h-7 w-7 text-muted-foreground/40" aria-hidden="true" />
-                          </div>
-                        ))}
+                      {resolved.showImages && (
+                        <MenuItemImage
+                          src={item.imageUrl}
+                          alt={item.name}
+                          imgClassName={
+                            isGridLayout
+                              ? 'h-32 w-full shrink-0 rounded-lg object-cover'
+                              : 'h-28 w-28 shrink-0 rounded-lg object-cover sm:h-32 sm:w-32'
+                          }
+                          boxClassName={isGridLayout ? 'h-32 w-full' : 'h-28 w-28 sm:h-32 sm:w-32'}
+                        />
+                      )}
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-heading text-base font-semibold text-foreground">{item.name}</h3>

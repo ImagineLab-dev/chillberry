@@ -148,7 +148,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:34
+    image: chillberry-web:36
     networks:
       easypanel:
         aliases:
