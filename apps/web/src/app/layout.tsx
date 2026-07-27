@@ -21,9 +21,35 @@ const body = DM_Sans({
   display: 'swap',
 });
 
+// Dominio público — necesario para que las URLs de Open Graph, canonical y las
+// imágenes OG se resuelvan absolutas (Next avisa si falta y rompe los previews).
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://chillberry.app';
+
+const SITE_TITLE = 'Chillberry — El sistema completo para tu restaurante';
+const SITE_DESCRIPTION =
+  'Pedidos, cocina, caja, delivery y carta con QR trabajando juntos, en cualquier teléfono o tablet. Sin comisión por venta y sin instalar nada. Probalo gratis.';
+
 export const metadata: Metadata = {
-  title: 'Chillberry',
-  description: 'Plataforma SaaS para restaurantes',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    // La home usa `absolute` (ver page.tsx); el resto de las páginas que ponen
+    // `title: 'X'` quedan como "X · Chillberry".
+    default: SITE_TITLE,
+    template: '%s · Chillberry',
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: 'Chillberry',
+  keywords: [
+    'software para restaurantes',
+    'sistema de gestión gastronómica',
+    'carta con QR',
+    'menú digital',
+    'punto de venta restaurante',
+    'POS gastronómico',
+    'delivery propio',
+    'comanda a cocina',
+  ],
+  authors: [{ name: 'Chillberry' }],
   // El manifest es lo que le falta a iOS para recibir avisos push. Safari sólo
   // expone `PushManager` cuando el sitio está agregado a la pantalla de inicio
   // como app, y eso requiere un manifest con `display: standalone`. Sin él, en
@@ -31,6 +57,23 @@ export const metadata: Metadata = {
   // WhatsApp, ese público quedaba sin ningún canal de aviso.
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Chillberry', statusBarStyle: 'default' },
+  // Preview al compartir el link (WhatsApp/Instagram/Facebook) y tarjeta de X.
+  // La imagen sale sola de `app/opengraph-image.png`. Las páginas públicas de
+  // cada restaurante pisan esto con su nombre/foto (ver sus `generateMetadata`).
+  openGraph: {
+    type: 'website',
+    siteName: 'Chillberry',
+    locale: 'es_AR',
+    url: SITE_URL,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

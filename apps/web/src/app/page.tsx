@@ -21,9 +21,12 @@ import { DemoShowcase } from '@/components/landing/demo-showcase';
 import { CommissionCalculator } from '@/components/landing/commission-calculator';
 
 export const metadata: Metadata = {
-  title: 'Chillberry: el sistema completo para tu restaurante',
+  // `absolute` evita el sufijo "· Chillberry" del template: la home lleva la
+  // frase de marca completa.
+  title: { absolute: 'Chillberry — El sistema completo para tu restaurante' },
   description:
-    'Pedidos, cocina, caja, delivery y carta con QR en un solo lugar. Probalo gratis: sin instalar nada, funciona desde cualquier teléfono o tablet.',
+    'Pedidos, cocina, caja, delivery y carta con QR en un solo lugar, sin comisión por venta. Probalo gratis: sin instalar nada, funciona desde cualquier teléfono o tablet.',
+  alternates: { canonical: '/' },
 };
 
 const FEATURES = [
