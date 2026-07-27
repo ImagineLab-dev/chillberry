@@ -11,16 +11,17 @@
  * restaurantes ni pedidos ni usuarios de nadie. Falla cerrado (no ve nada),
  * nunca abierto (ver datos de otro).
  *
- * Se excluye de listados y métricas: es infraestructura de Smartia, no un
+ * Se excluye de listados y métricas: es infraestructura de la plataforma, no un
  * cliente del SaaS.
  */
-export const SYSTEM_TENANT_SLUG = 'smartia-system';
+export const SYSTEM_TENANT_SLUG = 'chillberry-system';
 
 /** Acciones auditables. Guardadas como texto en `SuperAdminAuditLog.action`. */
 export const SUPER_ADMIN_AUDIT_ACTION = {
   ChangePlan: 'CHANGE_PLAN',
   SuspendSubscription: 'SUSPEND_SUBSCRIPTION',
   ReactivateSubscription: 'REACTIVATE_SUBSCRIPTION',
+  SetSubscriptionDates: 'SET_SUBSCRIPTION_DATES',
 } as const;
 
 export type SuperAdminAuditAction =

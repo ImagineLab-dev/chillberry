@@ -11,10 +11,11 @@ import { SupportService } from '../support/support.service';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
+import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
 import { ListAuditDto } from './dto/list-audit.dto';
 
 /**
- * Panel interno de Smartia. Cruza el aislamiento multi-tenant a propósito, así
+ * Panel interno de la plataforma. Cruza el aislamiento multi-tenant a propósito, así
  * que el `@Roles` va A NIVEL DE CLASE y ningún handler lo pisa: no existe
  * forma de agregar un endpoint acá y olvidarse del guard.
  *
@@ -82,6 +83,17 @@ export class SuperAdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.superAdmin.updateSubscription(id, dto, user.id);
+  }
+
+  // Extender/fijar a mano las fechas de la suscripción (fin de prueba / renovación).
+  @Throttle(strictThrottle(10))
+  @Patch('tenants/:id/subscription/dates')
+  setSubscriptionDates(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetSubscriptionDatesDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.superAdmin.setSubscriptionDates(id, dto, user.id);
   }
 
   // --- Reportes/sugerencias de los restaurantes (ver SupportModule) ---

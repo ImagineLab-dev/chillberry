@@ -51,6 +51,12 @@ export default function TenantDetailPage() {
   const [confirmSuspend, setConfirmSuspend] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
 
+  // Extender/fijar fechas de la suscripción (fin de prueba / renovación).
+  // Vacío = no tocar esa fecha; se exige al menos una y un motivo.
+  const [newTrialEndsAt, setNewTrialEndsAt] = useState('');
+  const [newRenewalDate, setNewRenewalDate] = useState('');
+  const [datesReason, setDatesReason] = useState('');
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -126,6 +132,30 @@ export default function TenantDetailPage() {
     try {
       await api.patch(`/super-admin/tenants/${id}/subscription`, { status: 'ACTIVE' });
       setNotice('Suscripción reactivada.');
+      await load();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSetDates(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      // Los <input type="date"> dan "YYYY-MM-DD"; se manda ISO-8601 (medianoche UTC).
+      await api.patch(`/super-admin/tenants/${id}/subscription/dates`, {
+        trialEndsAt: newTrialEndsAt ? new Date(newTrialEndsAt).toISOString() : undefined,
+        renewalDate: newRenewalDate ? new Date(newRenewalDate).toISOString() : undefined,
+        reason: datesReason.trim(),
+      });
+      setNotice('Fechas de la suscripción actualizadas.');
+      setNewTrialEndsAt('');
+      setNewRenewalDate('');
+      setDatesReason('');
       await load();
     } catch (err) {
       setError((err as ApiError).message);
@@ -297,6 +327,65 @@ export default function TenantDetailPage() {
                 </div>
               )}
             </dl>
+
+            {/* Extender / fijar fechas: la herramienta para dar más tiempo. */}
+            <form onSubmit={onSetDates} className="mb-4 space-y-2 rounded-md border border-border p-3">
+              <p className="text-sm font-medium text-foreground">Extender / fijar fechas</p>
+              <p className="text-xs text-muted-foreground">
+                Dale más tiempo al cliente (prueba o renovación). Dejá una fecha en blanco para no tocarla.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="label" htmlFor="newTrial">
+                    Prueba hasta
+                  </label>
+                  <input
+                    id="newTrial"
+                    type="date"
+                    value={newTrialEndsAt}
+                    onChange={(e) => setNewTrialEndsAt(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="label" htmlFor="newRenewal">
+                    Renueva
+                  </label>
+                  <input
+                    id="newRenewal"
+                    type="date"
+                    value={newRenewalDate}
+                    onChange={(e) => setNewRenewalDate(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="label" htmlFor="datesReason">
+                  Motivo <span className="text-error">*</span>
+                </label>
+                <input
+                  id="datesReason"
+                  value={datesReason}
+                  onChange={(e) => setDatesReason(e.target.value)}
+                  maxLength={300}
+                  placeholder="Ej: le regalo 30 días por la demora"
+                  className="input w-full"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={saving || (!newTrialEndsAt && !newRenewalDate) || datesReason.trim().length === 0}
+                className="btn btn-primary w-full"
+              >
+                {saving ? 'Guardando…' : 'Guardar fechas'}
+              </button>
+              {isSuspended && (
+                <p className="text-xs text-warn-foreground">
+                  Ojo: cambiar fechas no reactiva un tenant suspendido. Para eso usá el botón de reactivar.
+                </p>
+              )}
+            </form>
 
             {isSuspended ? (
               <button onClick={onReactivate} disabled={saving} className="btn btn-primary w-full">

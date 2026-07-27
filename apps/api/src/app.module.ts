@@ -90,7 +90,7 @@ import { SuperAdminModule } from './modules/super-admin/super-admin.module';
     LoyaltyModule,
     TenantSettingsModule,
 
-    // Panel interno de Smartia (staff del SaaS, no de un tenant). Único
+    // Panel interno de la plataforma (staff del SaaS, no de un tenant). Único
     // módulo que lee cross-tenant — ver super-admin.service.ts.
     SuperAdminModule,
   ],

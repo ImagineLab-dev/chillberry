@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { ChangeTenantPlanDto } from './dto/change-tenant-plan.dto';
 import { UpdateTenantSubscriptionDto } from './dto/update-tenant-subscription.dto';
+import { SetSubscriptionDatesDto } from './dto/set-subscription-dates.dto';
 import { ListAuditDto } from './dto/list-audit.dto';
 import {
   DEFAULT_PAGE_SIZE,
@@ -45,7 +46,7 @@ const TENANT_SELECT = {
 } as const;
 
 /** Todo listado/métrica del panel excluye el tenant sistema: es infraestructura
- *  de Smartia, no un cliente. Ver SYSTEM_TENANT_SLUG. */
+ *  de la plataforma, no un cliente. Ver SYSTEM_TENANT_SLUG. */
 const NOT_SYSTEM_TENANT = { slug: { not: SYSTEM_TENANT_SLUG } } as const;
 
 type UsageCounts = { branches: number; users: number; orders: number };
@@ -310,6 +311,49 @@ export class SuperAdminService {
     return updated;
   }
 
+  /**
+   * Fijar/extender a mano las fechas de la suscripción (fin de prueba y/o
+   * renovación). Herramienta del super-admin para dar más tiempo: extender una
+   * prueba, regalar días, dejar un demo con pista larga.
+   *
+   * A propósito NO toca `status`: si el tenant está suspendido, correr la fecha
+   * no lo reactiva (para eso está `updateSubscription`). Así una acción hace una
+   * sola cosa y el efecto es predecible. Tampoco toca `pastDueSince`/`cancelledAt`
+   * (son del motor de billing).
+   */
+  async setSubscriptionDates(tenantId: string, dto: SetSubscriptionDatesDto, superAdminId: string) {
+    await this.assertTenantExists(tenantId);
+    if (!dto.trialEndsAt && !dto.renewalDate) {
+      throw new BadRequestException('Indicá al menos una fecha (fin de prueba o renovación).');
+    }
+
+    const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
+    if (!sub) throw new NotFoundException('Este tenant no tiene una suscripción');
+
+    const newTrial = dto.trialEndsAt ? new Date(dto.trialEndsAt) : sub.trialEndsAt;
+    const newRenewal = dto.renewalDate ? new Date(dto.renewalDate) : sub.renewalDate;
+    const data: Prisma.SubscriptionUpdateInput = {};
+    if (dto.trialEndsAt) data.trialEndsAt = newTrial;
+    if (dto.renewalDate) data.renewalDate = newRenewal;
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.subscription.update({ where: { id: sub.id }, data, include: { plan: true } }),
+      this.auditCreate(superAdminId, SUPER_ADMIN_AUDIT_ACTION.SetSubscriptionDates, tenantId, {
+        previous: {
+          trialEndsAt: sub.trialEndsAt?.toISOString() ?? null,
+          renewalDate: sub.renewalDate?.toISOString() ?? null,
+        },
+        next: {
+          trialEndsAt: newTrial?.toISOString() ?? null,
+          renewalDate: newRenewal?.toISOString() ?? null,
+        },
+        reason: dto.reason,
+      }),
+    ]);
+
+    return updated;
+  }
+
   // ------------------------------------------------------------- métricas
 
   /**
@@ -318,7 +362,7 @@ export class SuperAdminService {
    * MRR: se agrupa por `Plan.currency`, NO por `Tenant.currency`. Son cosas
    * distintas y mezclarlas da un número inventado: `Tenant.currency` es la
    * moneda con la que el restaurante opera (su menú, sus pedidos), mientras
-   * que lo que Smartia le cobra está cotizado en `Plan.currency`. Hoy los
+   * que lo que la plataforma le cobra está cotizado en `Plan.currency`. Hoy los
    * tres planes están en USD y hay tenants operando en PYG/MXN/ARS: sumar por
    * moneda del tenant reportaría "₲ 79" de un cliente que paga USD 79.
    * Devuelve una lista `[{currency, amount, tenants}]` y no un escalar,

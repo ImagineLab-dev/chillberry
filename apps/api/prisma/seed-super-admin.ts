@@ -49,7 +49,7 @@ async function main() {
     where: { slug: SYSTEM_TENANT_SLUG },
     update: {},
     create: {
-      name: 'Smartia (sistema)',
+      name: 'Chillberry (sistema)',
       slug: SYSTEM_TENANT_SLUG,
       countryCode: 'PY',
       currency: 'PYG',

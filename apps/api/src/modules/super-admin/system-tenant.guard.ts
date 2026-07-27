@@ -6,7 +6,7 @@ import { SYSTEM_TENANT_SLUG } from './super-admin.constants';
 
 /**
  * Blindaje de aislamiento (defensa en profundidad): un SUPER_ADMIN solo vale si
- * pertenece al tenant sistema (`smartia-system`). El diseño ya asume esto (ver
+ * pertenece al tenant sistema (`chillberry-system`). El diseño ya asume esto (ver
  * super-admin.constants) pero no estaba ENFORCED en runtime — se sostenía solo
  * porque no hay forma de crear un SUPER_ADMIN en otro tenant (el `@IsIn` del
  * UpdateUserDto + el chequeo del service lo bloquean). Este guard lo hace
