@@ -32,8 +32,8 @@ export class DeliveryController {
 
   @Roles(...STAFF_ROLES)
   @Post('zones')
-  createZone(@Body() dto: CreateZoneDto) {
-    return this.zones.create(dto);
+  createZone(@Body() dto: CreateZoneDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.zones.create(dto, user);
   }
 
   @Roles(...STAFF_ROLES, USER_ROLE.Waiter, USER_ROLE.Cashier)
@@ -44,15 +44,19 @@ export class DeliveryController {
 
   @Roles(...STAFF_ROLES)
   @Patch('zones/:id')
-  updateZone(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateZoneDto) {
-    return this.zones.update(id, dto);
+  updateZone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateZoneDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.zones.update(id, dto, user);
   }
 
   // Quitar = soft-delete (active:false); preserva el zoneId de pedidos viejos.
   @Roles(...STAFF_ROLES)
   @Delete('zones/:id')
-  removeZone(@Param('id', ParseUUIDPipe) id: string) {
-    return this.zones.remove(id);
+  removeZone(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.zones.remove(id, user);
   }
 
   // ------------------------------------------------------------ drivers

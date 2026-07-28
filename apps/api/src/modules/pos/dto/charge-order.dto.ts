@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsUUID, Max, Min, ValidateNested } from 'class-validator';
 import { PAYMENT_METHOD, PAYMENT_PROVIDER, type PaymentMethod, type PaymentProvider } from '@chillberry/domain';
 
 export class ChargeLineDto {
@@ -16,6 +16,10 @@ export class ChargeLineDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  // Tope: `Payment.tipAmount` es Decimal(10,2) (máx 99.999.999,99). Sin `@Max`
+  // un tip gigante desbordaba la columna y la transacción del cobro moría con un
+  // 500 genérico en vez de un 400 de validación. Mismo blindaje que refund/movements.
+  @Max(99_999_999)
   tip?: number;
 
   @IsOptional()

@@ -7,15 +7,21 @@ import { getImpersonation, stopImpersonation } from '@/lib/impersonation';
 
 /**
  * Aviso fijo cuando el super-admin está "viendo como" un restaurante. Deja claro
- * que NO es tu sesión y da un botón para volver al panel. Se muestra solo si hay
- * una impersonación activa en esta pestaña (ver lib/impersonation).
+ * que NO es tu sesión y da un botón para volver al panel. La impersonación vive en
+ * `localStorage` (compartida entre pestañas del host, ver lib/impersonation), y el
+ * `storage` event mantiene el banner en sync: si en OTRA pestaña se empieza/termina
+ * una impersonación, esta pestaña —que usa las MISMAS cookies de sesión— lo refleja
+ * al instante en vez de quedar operando como el tenant sin ningún aviso.
  */
 export function ImpersonationBanner() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState<string | null>(null);
 
   useEffect(() => {
-    setTenantName(getImpersonation()?.tenantName ?? null);
+    const sync = () => setTenantName(getImpersonation()?.tenantName ?? null);
+    sync();
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
   }, []);
 
   if (!tenantName) return null;

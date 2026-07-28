@@ -34,6 +34,11 @@ export class ReservationRemindersService {
         customerPhone: { not: null },
         reservedFor: { gte: now, lte: horizon },
       },
+      // Las MÁS PRÓXIMAS primero: con `take:200` sin orden, bajo un backlog
+      // sostenido >200 una reserva podía quedar siempre fuera del lote y, al
+      // cruzar su `reservedFor`, salir de la ventana sin que nunca se le avise.
+      // Ordenando por cercanía, la que está por vencer nunca queda relegada.
+      orderBy: { reservedFor: 'asc' },
       take: 200,
     });
     if (due.length === 0) return;

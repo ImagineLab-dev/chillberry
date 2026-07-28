@@ -6,9 +6,16 @@ import { decodeJwtPayload } from './jwt';
  * tokens del dueño de ese restaurante; acá guardamos los tokens del super-admin
  * (para poder volver) y ponemos los del tenant. Al salir, se restauran.
  *
- * Todo vive en `sessionStorage` (por pestaña): abrir el panel del tenant en la
- * misma pestaña reemplaza la sesión; cerrar la pestaña la descarta. La sesión
- * real sigue en las cookies `cb_access`/`cb_refresh` que maneja api-client.
+ * El estado (la vía de vuelta + el nombre del tenant) vive en `localStorage`, NO
+ * en `sessionStorage`. Motivo: los tokens viven en cookies host-only COMPARTIDAS
+ * entre todas las pestañas del host. Con el estado en `sessionStorage` (por
+ * pestaña) el desajuste era real y peligroso: (a) una segunda pestaña usaba el
+ * token del tenant impersonado pero NO mostraba el banner (su sessionStorage
+ * estaba vacío), y (b) cerrar la pestaña sin "Salir" mataba la vía de vuelta pero
+ * las cookies seguían vivas 30 días → super-admin varado como dueño del tenant
+ * sin forma de volver salvo re-login. `localStorage` es del mismo scope que las
+ * cookies (compartido entre pestañas del host, persiste al cerrar) y no viaja al
+ * server, así que banner y vía de vuelta quedan siempre en sync con la sesión real.
  */
 const KEY = 'cb_impersonation';
 
@@ -26,7 +33,7 @@ function remainingSeconds(accessToken: string | null): number {
 
 function readSaved(): Saved | null {
   if (typeof window === 'undefined') return null;
-  const raw = sessionStorage.getItem(KEY);
+  const raw = localStorage.getItem(KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as Saved;
@@ -52,13 +59,13 @@ export function startImpersonation(
         refresh: tokens.getRefresh() ?? '',
         expiresIn: remainingSeconds(tokens.getAccess()),
       };
-  sessionStorage.setItem(KEY, JSON.stringify(saved));
+  localStorage.setItem(KEY, JSON.stringify(saved));
   tokens.set(pair.accessToken, pair.refreshToken, pair.expiresIn);
 }
 
 export function getImpersonation(): ImpersonationInfo | null {
   if (typeof window === 'undefined') return null;
-  const raw = sessionStorage.getItem(KEY);
+  const raw = localStorage.getItem(KEY);
   if (!raw) return null;
   try {
     return { tenantName: (JSON.parse(raw) as Saved).tenantName };
@@ -70,7 +77,7 @@ export function getImpersonation(): ImpersonationInfo | null {
 /** Restaura la sesión del super-admin. Devuelve false si no había impersonación. */
 export function stopImpersonation(): boolean {
   if (typeof window === 'undefined') return false;
-  const raw = sessionStorage.getItem(KEY);
+  const raw = localStorage.getItem(KEY);
   if (!raw) return false;
   try {
     const s = JSON.parse(raw) as Saved;
@@ -79,6 +86,6 @@ export function stopImpersonation(): boolean {
   } catch {
     tokens.clear();
   }
-  sessionStorage.removeItem(KEY);
+  localStorage.removeItem(KEY);
   return true;
 }

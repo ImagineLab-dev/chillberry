@@ -43,6 +43,11 @@ export class FeedbackSurveyService {
         feedback: { is: null },
       },
       select: { id: true, tenantId: true, branchId: true, waiterId: true, customerPhone: true },
+      // Los MÁS VIEJOS primero: con `take:200` sin orden, bajo backlog sostenido
+      // un pedido podía quedar siempre fuera del lote hasta envejecer más de 48h
+      // y salir de la ventana sin encuesta. Ordenando por antigüedad, el que está
+      // por caducar se procesa primero.
+      orderBy: { completedAt: 'asc' },
       take: 200,
     });
     if (due.length === 0) return;

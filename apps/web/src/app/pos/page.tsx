@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { formatMoney } from '@chillberry/domain';
 import { api, type ApiError } from '@/lib/api-client';
+import { makeUuid } from '@/lib/uuid';
 import {
   ItemModifierPicker,
   modifiersSatisfied,
@@ -204,6 +205,10 @@ export default function PosPage() {
   // re-render entre el error y el reintento podría regenerarla y el servidor
   // ya no reconocería el replay.
   const chargeKeyRef = useRef<string | null>(null);
+  // Clave de idempotencia de la venta de mostrador (crear pedido TAKEAWAY). Mismo
+  // criterio que la del cobro: estable entre reintentos para que un retry tras una
+  // respuesta perdida no cree un pedido duplicado (el backend /orders deduplica).
+  const newOrderKeyRef = useRef<string | null>(null);
   // Focus-trap + scroll-lock de los dos modales (ver use-modal.ts).
   const movementModalRef = useModalBehavior(movementOpen);
   const newOrderModalRef = useModalBehavior(newOrderOpen);
@@ -582,7 +587,7 @@ export default function PosPage() {
     // La clave se genera UNA vez por intento y se reusa si el cobro falla y el
     // cajero reintenta: así el servidor reconoce el replay y no cobra dos
     // veces. Se regenera recién cuando el cobro sale bien (abajo).
-    const key = chargeKeyRef.current ?? (chargeKeyRef.current = crypto.randomUUID());
+    const key = chargeKeyRef.current ?? (chargeKeyRef.current = makeUuid());
     try {
       const tipValue = Number(tip) || 0;
       const result = await api.post<{ order: { status: string } }>(`/pos/orders/${selectedOrder.id}/charge`, {
@@ -622,10 +627,24 @@ export default function PosPage() {
       await loadOrders(branchId);
       await loadSession(branchId);
       if (result.order.status === 'COMPLETED') {
-        const inv = await api.get<Invoice>(`/invoices/${selectedOrder.id}`);
-        setInvoice(inv);
-        setLastReceipt({ ...receiptSnapshot, invoice: { series: inv.series, number: inv.number } });
+        // La venta YA se cobró. La confirmación (recibo + botón de reembolso, que
+        // viven en el panel persistente "Última venta") se fija ANTES de pedir la
+        // factura, y el fetch de la factura va en su propio try. Antes, si ese GET
+        // fallaba (blip de red), el catch de afuera seteaba `chargeError` en el
+        // panel del pedido —que ya se desmontó al salir de pendientes— y el cajero
+        // veía el pedido ESFUMARSE sin comprobante ni confirmación, pudiendo
+        // re-cobrar. Ahora, pase lo que pase con la factura, queda la confirmación.
+        setLastReceipt(receiptSnapshot);
         setLastCharged({ id: selectedOrder.id, total: receiptSnapshot.total });
+        try {
+          const inv = await api.get<Invoice>(`/invoices/${selectedOrder.id}`);
+          setInvoice(inv);
+          setLastReceipt({ ...receiptSnapshot, invoice: { series: inv.series, number: inv.number } });
+        } catch {
+          setChargeNotice(
+            'Cobrado. No se pudo cargar el comprobante fiscal ahora — reintentá imprimirlo desde la venta.',
+          );
+        }
       } else {
         setLastReceipt(receiptSnapshot);
         // "No completado" tiene DOS causas distintas y el mensaje tiene que
@@ -739,9 +758,11 @@ export default function PosPage() {
     try {
       // Sin `tableId` → el backend lo guarda como TAKEAWAY (venta de mostrador).
       // Se manda `type` explícito igual para que no dependa del default.
+      const key = newOrderKeyRef.current ?? (newOrderKeyRef.current = makeUuid());
       const created = await api.post<{ id: string }>('/orders', {
         branchId,
         type: 'TAKEAWAY',
+        idempotencyKey: key,
         customerName: newCustomerName.trim() || undefined,
         items: newCart.map((l) => ({
           menuItemId: l.menuItemId,
@@ -749,6 +770,7 @@ export default function PosPage() {
           modifierOptionIds: l.modifierOptionIds.length > 0 ? l.modifierOptionIds : undefined,
         })),
       });
+      newOrderKeyRef.current = null;
       setNewOrderOpen(false);
       setNewCart([]);
       setNewCustomerName('');

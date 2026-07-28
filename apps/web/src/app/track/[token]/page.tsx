@@ -129,7 +129,14 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
     load().catch(() => {});
 
     const socket = io(`${SOCKET_URL}/delivery`, { transports: ['websocket'] });
-    socket.on('connect', () => socket.emit('delivery:track', { trackingToken: token }));
+    socket.on('connect', () => {
+      socket.emit('delivery:track', { trackingToken: token });
+      // Recargar al (re)conectar: si el estado pasó a terminal (DELIVERED) durante
+      // un corte, ese `delivery:updated` se perdió y no llega ninguno más (el
+      // repartidor deja de emitir ubicación), así que la página quedaba clavada en
+      // "en camino" y nunca aparecía el bloque para calificar.
+      load().catch(() => {});
+    });
     socket.on('delivery:updated', () => load());
     socket.on('driver:location', (payload: { lat: number; lng: number }) => {
       setTracking((prev) => (prev ? { ...prev, location: payload } : prev));

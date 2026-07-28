@@ -35,6 +35,14 @@ async function refreshAccessToken(): Promise<string | null> {
         body: JSON.stringify({ refreshToken }),
       });
       if (!res.ok) {
+        // El backend rota+revoca el refresh (uso único). Si OTRA pestaña refrescó
+        // entre que leímos `refreshToken` y ahora, el server revocó ESTE (por eso
+        // el 401) pero la cookie COMPARTIDA ya tiene el par nuevo que dejó la otra
+        // pestaña. Antes se hacía `tokens.clear()` a ciegas, que —al ser cookies
+        // compartidas— deslogueaba TODAS las pestañas por una carrera benigna. Se
+        // re-lee la cookie: si cambió, usamos el access fresco en vez de limpiar.
+        const actual = tokens.getRefresh();
+        if (actual && actual !== refreshToken) return tokens.getAccess() ?? null;
         tokens.clear();
         return null;
       }
@@ -42,7 +50,11 @@ async function refreshAccessToken(): Promise<string | null> {
       tokens.set(data.accessToken, data.refreshToken, data.expiresIn);
       return data.accessToken;
     } catch {
-      tokens.clear();
+      // Error de RED (no un rechazo del server): un corte momentáneo no debería
+      // desloguear. Si otra pestaña ya rotó, devolvemos su access; si no, se
+      // devuelve null SIN limpiar — el próximo intento reintenta el refresh.
+      const actual = tokens.getRefresh();
+      if (actual && actual !== refreshToken) return tokens.getAccess() ?? null;
       return null;
     } finally {
       refreshInFlight = null;

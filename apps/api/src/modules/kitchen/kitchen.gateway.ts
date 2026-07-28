@@ -9,6 +9,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
+import { USER_ROLE } from '@chillberry/domain';
 import type { Namespace, Socket } from 'socket.io';
 import { loadEnv } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -50,10 +51,27 @@ export class KitchenGateway implements OnGatewayConnection, OnGatewayDisconnect 
       });
       client.data.tenantId = payload.tenantId;
       client.data.role = payload.role;
+      // `branchId` del token: necesario para el segundo nivel de aislamiento (por
+      // sucursal) en los join. Sin guardarlo, el join sólo podía chequear el
+      // tenant y un empleado atado a la sucursal A escuchaba la cocina/caja de la B.
+      client.data.branchId = payload.branchId ?? null;
     } catch {
       this.logger.warn(`Conexión WS rechazada (token inválido): ${client.id}`);
       client.disconnect(true);
     }
+  }
+
+  /**
+   * Segundo nivel de aislamiento, el mismo que `assertPuedeUsarSucursal` en HTTP:
+   * OWNER/SUPER_ADMIN o usuario sin sucursal asignada ven todos los locales; el
+   * resto (ADMIN de sucursal, cajero, cocina) sólo el suyo. Sin esto, el join
+   * dejaba entrar a la room de cualquier sucursal del propio tenant.
+   */
+  private puedeUsarSucursal(client: Socket, branchId: string): boolean {
+    const role = client.data.role as string | undefined;
+    const userBranchId = client.data.branchId as string | null | undefined;
+    if (role === USER_ROLE.Owner || role === USER_ROLE.SuperAdmin || !userBranchId) return true;
+    return branchId === userBranchId;
   }
 
   handleDisconnect(_client: Socket) {
@@ -71,6 +89,7 @@ export class KitchenGateway implements OnGatewayConnection, OnGatewayDisconnect 
     // podría suscribirse a eventos de cocina ajenos con solo adivinar un id.
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) return;
+    if (!this.puedeUsarSucursal(client, branchId)) return;
 
     await client.join(this.roomName(branchId));
   }
@@ -90,6 +109,7 @@ export class KitchenGateway implements OnGatewayConnection, OnGatewayDisconnect 
 
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) return;
+    if (!this.puedeUsarSucursal(client, branchId)) return;
 
     await client.join(this.cashRoomName(branchId));
   }

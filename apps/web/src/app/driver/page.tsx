@@ -65,7 +65,14 @@ export default function DriverPage() {
       .catch(() => {});
 
     const socket = connectDeliverySocket();
-    socket.on('connect', () => socket.emit('driver:join'));
+    socket.on('connect', () => {
+      socket.emit('driver:join');
+      // Recargar al (re)conectar: si el despachador asignó una entrega mientras el
+      // repartidor estaba sin señal, ese `delivery:assigned` se emitió y se perdió
+      // (socket.io no reproduce eventos server→cliente perdidos). Sin este reload
+      // la entrega quedaba invisible hasta la próxima asignación o un refresh.
+      loadDeliveries().catch(() => {});
+    });
     socket.on('delivery:assigned', () => {
       // El repartidor casi nunca está mirando la pantalla — sonido urgente +
       // pop-up para que no se pierda una entrega recién asignada.

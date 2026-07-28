@@ -348,9 +348,24 @@ export class PaymentsService {
         await this.checkAndCompleteOrder(payment.orderId);
       }
     } else if (body.eventType === 'PAYMENT_FAILED') {
-      await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+      // Sólo desde NO-terminal (compare-and-set, igual que la rama APPROVED): un
+      // FAILED que llega tarde o fuera de orden DESPUÉS de un APPROVED no puede
+      // tumbar el pago — volvería a mostrar el pedido impago en resolveTarget y
+      // sacaría plata real (ya cobrada, con el pedido COMPLETED) de los reportes.
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'PROCESSING'] } },
+        data: { status: 'FAILED' },
+      });
     } else if (body.eventType === 'PAYMENT_REFUNDED') {
-      await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'REFUNDED' } });
+      // Un reembolso aplica sólo sobre un pago APROBADO (no sobre uno pendiente o
+      // ya reembolsado): el `where` condiciona la transición para que un evento
+      // fuera de orden no pise otro estado. La reconciliación completa del
+      // reembolso electrónico (revertir el cierre / registrar la salida de caja)
+      // queda pendiente de dLocal real — hoy sólo está cableado el adapter mock.
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: 'APPROVED' },
+        data: { status: 'REFUNDED' },
+      });
     }
 
     await this.prisma.paymentWebhookEvent.update({

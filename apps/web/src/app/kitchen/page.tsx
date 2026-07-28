@@ -141,9 +141,14 @@ export default function KitchenPage() {
   useEffect(() => {
     const clock = setInterval(() => setNow(Date.now()), 15_000);
     const sync = setInterval(async () => {
-      const { synced } = await offlineQueue.flush();
+      const { synced, dropped } = await offlineQueue.flush();
       setQueueSize(offlineQueue.size());
-      if (synced > 0 && branchId) await loadBoard(branchId);
+      // Recargar también si el server RECHAZÓ acciones (`dropped`): una transición
+      // inválida encolada offline (p.ej. el pedido se cerró entremedio) se descarta
+      // de la cola SIN revertir el estado optimista, así que la comanda queda en la
+      // columna avanzada mientras el backend la tiene atrás. Antes sólo se recargaba
+      // con `synced>0` y ese desync persistía hasta otra interacción.
+      if ((synced > 0 || dropped > 0) && branchId) await loadBoard(branchId);
     }, 8_000);
     const onOnline = () => setOffline(false);
     const onOffline = () => setOffline(true);
@@ -166,7 +171,14 @@ export default function KitchenPage() {
 
     const socket = connectKitchenSocket();
     socketRef.current = socket;
-    socket.on('connect', () => socket.emit('kitchen:join', { branchId }));
+    socket.on('connect', () => {
+      socket.emit('kitchen:join', { branchId });
+      // Recargar al (re)conectar: las comandas creadas durante un corte se
+      // emitieron y se perdieron (sin reproducción de eventos perdidos); sin este
+      // reload el tablero queda atrasado hasta el próximo `kitchen:task`, y el badge
+      // 'sin conexión' ya no está porque la conexión volvió.
+      loadBoard(branchId);
+    });
 
     // Un pedido genera una comanda por ESTACIÓN, así que el back emite un
     // `kitchen:task:created` por estación: un pedido con 3 estaciones = 3 eventos

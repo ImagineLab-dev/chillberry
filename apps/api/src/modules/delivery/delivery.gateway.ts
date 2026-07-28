@@ -8,6 +8,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
+import { USER_ROLE } from '@chillberry/domain';
 import type { Namespace, Socket } from 'socket.io';
 import { loadEnv } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -44,9 +45,20 @@ export class DeliveryGateway implements OnGatewayConnection {
       client.data.tenantId = payload.tenantId;
       client.data.userId = payload.sub;
       client.data.role = payload.role;
+      // `branchId` para el aislamiento por sucursal del `dispatcher:join`.
+      client.data.branchId = payload.branchId ?? null;
     } catch {
       this.logger.warn(`Token inválido en conexión /delivery (queda como anónimo): ${client.id}`);
     }
+  }
+
+  /** Mismo criterio que `assertPuedeUsarSucursal` (HTTP): OWNER/SUPER_ADMIN o
+   *  usuario sin sucursal ven todos los locales; el resto sólo el suyo. */
+  private puedeUsarSucursal(client: Socket, branchId: string): boolean {
+    const role = client.data.role as string | undefined;
+    const userBranchId = client.data.branchId as string | null | undefined;
+    if (role === USER_ROLE.Owner || role === USER_ROLE.SuperAdmin || !userBranchId) return true;
+    return branchId === userBranchId;
   }
 
   /** El repartidor autenticado se suscribe a los pedidos que le asignan. */
@@ -76,6 +88,7 @@ export class DeliveryGateway implements OnGatewayConnection {
 
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) return;
+    if (!this.puedeUsarSucursal(client, branchId)) return;
 
     await client.join(this.dispatchRoom(branchId));
   }

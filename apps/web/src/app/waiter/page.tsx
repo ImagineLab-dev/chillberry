@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { BellRing, Check, LogOut, Minus, Plus, Receipt, Users, X } from 'lucide-react';
 import { BILL_SPLIT_MODE, formatMoney } from '@chillberry/domain';
 import { api, type ApiError } from '@/lib/api-client';
+import { makeUuid } from '@/lib/uuid';
 import { ItemModifierPicker, modifiersSatisfied, type ModifierGroupView } from '@/components/item-modifier-picker';
 import { SubscriptionBanner } from '@/components/subscription-banner';
 import { logout } from '@/lib/auth';
@@ -255,7 +256,7 @@ export default function WaiterPage() {
 
   async function onCreateOrder() {
     if (!selectedTableId || cart.length === 0) return;
-    if (!orderKeyRef.current) orderKeyRef.current = crypto.randomUUID();
+    if (!orderKeyRef.current) orderKeyRef.current = makeUuid();
     await run(async () => {
       await api.post('/orders', {
         branchId,
