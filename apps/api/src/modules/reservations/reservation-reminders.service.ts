@@ -38,6 +38,15 @@ export class ReservationRemindersService {
     });
     if (due.length === 0) return;
 
+    // Timezone por tenant para formatear la hora en la hora LOCAL del restaurante
+    // (no la del server). Un solo fetch para todo el lote, no N.
+    const tenantIds = [...new Set(due.map((r) => r.tenantId))];
+    const tenants = await this.prisma.tenant.findMany({
+      where: { id: { in: tenantIds } },
+      select: { id: true, timezone: true },
+    });
+    const tzById = new Map(tenants.map((t) => [t.id, t.timezone]));
+
     for (const r of due) {
       // Se RECLAMA antes de enviar, no después. El `updateMany` con
       // `reminderSent: false` en el where es atómico: si dos instancias del API
@@ -52,7 +61,14 @@ export class ReservationRemindersService {
       if (claim.count === 0) continue;
 
       await this.notifications
-        .notifyReservationReminder(r.tenantId, r.customerPhone, r.customerName, r.reservedFor, r.partySize)
+        .notifyReservationReminder(
+          r.tenantId,
+          r.customerPhone,
+          r.customerName,
+          r.reservedFor,
+          r.partySize,
+          tzById.get(r.tenantId),
+        )
         .catch(() => {});
     }
     logger.info({ count: due.length }, 'Recordatorios de reserva enviados');

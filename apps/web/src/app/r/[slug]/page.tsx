@@ -28,6 +28,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { makeUuid } from '@/lib/uuid';
 import { formatMoney } from '@chillberry/domain';
 import { cartaThemeStyle, resolveCartaTheme, type CartaTheme } from '@/lib/carta-theme';
 import {
@@ -544,7 +545,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     if (!menu || !fulfillment) return;
     setSubmitError(null);
     setSubmitting(true);
-    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = makeUuid();
     try {
       const res = await api.post<{
         orderId: string;

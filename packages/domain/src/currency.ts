@@ -47,7 +47,12 @@ export function formatMoney(amount: number | string, countryCode: string): strin
   const country = findDlocalCountry(countryCode);
   const symbol = country?.currencySymbol ?? '';
   const n = Number(amount);
-  const formatted = Number.isFinite(n) ? n.toLocaleString('es-419') : String(amount);
+  // Locale POR PAÍS: el genérico 'es-419' agrupa con COMA (24,000), pero PY/AR y
+  // casi toda Latam usan PUNTO (24.000) — que es lo que el propio ejemplo de
+  // arriba documenta. México sí usa coma (es-MX), Brasil punto (pt-BR). Con un
+  // país desconocido se cae al genérico (comportamiento previo).
+  const locale = country ? (countryCode === 'BR' ? 'pt-BR' : `es-${countryCode}`) : 'es-419';
+  const formatted = Number.isFinite(n) ? n.toLocaleString(locale) : String(amount);
   return symbol ? `${symbol} ${formatted}` : formatted;
 }
 

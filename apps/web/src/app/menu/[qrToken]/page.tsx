@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Minus, Plus, QrCode, Receipt, ShoppingBag, Trash2, UtensilsCrossed } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { makeUuid } from '@/lib/uuid';
 import { formatMoney } from '@chillberry/domain';
 import { cartaThemeStyle, resolveCartaTheme, type CartaTheme } from '@/lib/carta-theme';
 import { Turnstile } from '@/components/turnstile';
@@ -318,7 +319,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
     if (!menu) return;
     setSubmitError(null);
     setSubmitting(true);
-    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = makeUuid();
     try {
       const res = await api.post<{ orderId: string; status: string; total: string }>(
         `/public/menu/${qrToken}/order`,

@@ -762,39 +762,60 @@ export class PublicMenuService {
     // ALS (no hay JWT). Se setea a mano con el tenant derivado del slug para que
     // KitchenService y DeliveryService (tenant-scoped) resuelvan el tenant.
     tenantContext.setTenantId(branch.tenantId);
-    await this.kitchen.generateTasksForOrder(order.id, order.branchId, order.items);
+    // Compensación (igual que createGuestOrder): la generación de comandas y la
+    // creación del Delivery ocurren DESPUÉS del commit del pedido. Si fallan, el
+    // pedido quedaría fantasma: committeado (y con el cupón ya canjeado) pero sin
+    // KitchenTask/Delivery -> nunca llega al KDS ni al repartidor, y un reintento
+    // con la misma idempotencyKey lo devolvería como "éxito". Se cancela y se
+    // propaga. El cupón canjeado queda usado (mal menor frente a un pedido vivo
+    // que nadie cocina/entrega).
+    try {
+      await this.kitchen.generateTasksForOrder(order.id, order.branchId, order.items);
 
-    if (isDelivery) {
-      const delivery = await this.delivery.createForPublicOrder(order.id, {
-        addressLine: dto.address!,
-        fee,
-        lat: dto.lat,
-        lng: dto.lng,
-        zoneId: pricing.zoneId,
-        estimatedMinutes: pricing.estimatedMinutes,
-      });
-      // Va el TOKEN, no el id: el link del cliente no puede ser la misma clave
-      // que ven el staff y el repartidor (con ella, el repartidor se calificaba
-      // solo). `deliveryId` se mantiene porque el front lo usa para nada más
-      // que mostrar; el que abre el seguimiento es `trackingToken`.
+      if (isDelivery) {
+        const delivery = await this.delivery.createForPublicOrder(order.id, {
+          addressLine: dto.address!,
+          fee,
+          lat: dto.lat,
+          lng: dto.lng,
+          zoneId: pricing.zoneId,
+          estimatedMinutes: pricing.estimatedMinutes,
+        });
+        // Va el TOKEN, no el id: el link del cliente no puede ser la misma clave
+        // que ven el staff y el repartidor (con ella, el repartidor se calificaba
+        // solo). `deliveryId` se mantiene porque el front lo usa para nada más
+        // que mostrar; el que abre el seguimiento es `trackingToken`.
+        return {
+          orderId: order.id,
+          deliveryId: delivery.id,
+          trackingToken: delivery.trackingToken,
+          fulfillment: dto.fulfillment,
+          status: order.status,
+          total: order.total,
+        };
+      }
+
+      // Retiro: no hay Delivery; el cliente sigue el estado por
+      // `/public/menu/orders/:orderId/status` como cualquier pedido de QR.
       return {
         orderId: order.id,
-        deliveryId: delivery.id,
-        trackingToken: delivery.trackingToken,
         fulfillment: dto.fulfillment,
         status: order.status,
         total: order.total,
       };
+    } catch (err) {
+      await this.prisma.order
+        .update({
+          where: { id: order.id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancelReason: 'Falló la generación de comandas/entrega',
+          },
+        })
+        .catch(() => {});
+      throw err;
     }
-
-    // Retiro: no hay Delivery; el cliente sigue el estado por
-    // `/public/menu/orders/:orderId/status` como cualquier pedido de QR.
-    return {
-      orderId: order.id,
-      fulfillment: dto.fulfillment,
-      status: order.status,
-      total: order.total,
-    };
   }
 
   /**

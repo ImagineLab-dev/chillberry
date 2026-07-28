@@ -233,12 +233,10 @@ export class UsersService {
     // Reactivar un usuario (inactivo -> activo) es, a efectos del plan, un ALTA
     // de usuario activo: tiene que pasar por el MISMO límite que crear uno. Sin
     // esto, un tenant en el tope evadía el paywall dando de baja a uno y
-    // reactivando otro (o reactivando al que había desactivado). Solo se chequea
-    // en la TRANSICIÓN (target inactivo): re-guardar un usuario ya activo con
+    // reactivando otro (o reactivando al que había desactivado). Solo cuenta en
+    // la TRANSICIÓN (target inactivo): re-guardar un usuario ya activo con
     // `active:true` es un no-op y no debe contar de más.
-    if (dto.active === true && !target.active) {
-      await this.billing.assertCanCreateUser();
-    }
+    const esReactivacion = dto.active === true && !target.active;
 
     // La contraseña (reset por owner/admin) no es un campo de User: se hashea y
     // se escribe como `passwordHash`. El resto del dto va tal cual.
@@ -251,11 +249,37 @@ export class UsersService {
     // que la invitación deja de tener sentido en el mismo acto.
     const { password, ...rest } = dto;
     const passwordHash = password ? await argon2.hash(password) : undefined;
-    const updated = await this.tenantPrisma.client.user.update({
-      where: { id },
-      data: { ...rest, ...(passwordHash ? { passwordHash, invitationToken: null, invitationExpiresAt: null } : {}) },
-      select: SAFE_SELECT,
-    });
+    const updateData = {
+      ...rest,
+      ...(passwordHash ? { passwordHash, invitationToken: null, invitationExpiresAt: null } : {}),
+    };
+
+    // Reactivación: el chequeo de límite y la escritura van ATÓMICOS, dentro de
+    // la MISMA transacción con advisory lock que usa el alta (create). Antes el
+    // límite se validaba con un `assertCanCreateUser` suelto ANTES del update, así
+    // que dos reactivaciones simultáneas contaban las dos por debajo del tope y
+    // activaban las dos, pasando el límite del plan (mismo race que ya cerramos en
+    // create). El `count` excluye al target (todavía inactivo), así que comparar
+    // `>= maxUsers` es correcto: si ya hay maxUsers activos, este no entra.
+    const updated = esReactivacion
+      ? await this.tenantPrisma.client.$transaction(async (tx) => {
+          const limits = await this.billing.getEffectiveLimits();
+          const lockKey = `${this.tenantPrisma.tenantId}:user`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+          if (limits) {
+            const activos = await tx.user.count({ where: { active: true } });
+            if (activos >= limits.maxUsers) {
+              throw new ConflictException({
+                code: 'PLAN_LIMIT_EXCEEDED',
+                message: `Tu plan "${limits.planName}" permite hasta ${limits.maxUsers} usuario(s) activo(s). Desactivá alguno o actualizá tu plan.`,
+                current: activos,
+                limit: limits.maxUsers,
+              });
+            }
+          }
+          return tx.user.update({ where: { id }, data: updateData, select: SAFE_SELECT });
+        })
+      : await this.tenantPrisma.client.user.update({ where: { id }, data: updateData, select: SAFE_SELECT });
     // Cambio de rol A repartidor: mismo criterio que en el alta — sin perfil
     // de Driver la cuenta queda rota (404 en toda su pantalla).
     if (dto.role === USER_ROLE.Driver) {

@@ -76,10 +76,20 @@ export class NotificationsService {
     name: string,
     when: Date,
     partySize: number,
+    /** Timezone del restaurante. `reservedFor` es un instante absoluto; sin esto
+     *  `toLocaleString` usaba la hora del SERVER (UTC) y el cliente veía la hora
+     *  corrida (una reserva 20:00 en Asunción le llegaba como "23:00"). */
+    timeZone?: string,
   ): Promise<void> {
+    const hora = when.toLocaleString('es', {
+      timeStyle: 'short',
+      ...(timeZone ? { timeZone } : {}),
+    });
     await this.push.avisar(tenantId, phone, {
-      titulo: 'Te esperamos hoy',
-      cuerpo: `${name}, tu reserva para ${partySize} es a las ${when.toLocaleString('es', { timeStyle: 'short' })}.`,
+      // "hoy" no: el recordatorio puede dispararse cruzando la medianoche para
+      // una reserva del día siguiente.
+      titulo: 'Te esperamos',
+      cuerpo: `${name}, tu reserva para ${partySize} es a las ${hora}.`,
       etiqueta: 'reserva',
     });
   }

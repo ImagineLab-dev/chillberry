@@ -163,10 +163,13 @@ export default function TenantDetailPage() {
     setNotice(null);
     setSaving(true);
     try {
-      // Los <input type="date"> dan "YYYY-MM-DD"; se manda ISO-8601 (medianoche UTC).
+      // Los <input type="date"> dan "YYYY-MM-DD". Se manda el FIN de ese día en
+      // hora LOCAL (T23:59:59), no medianoche: `new Date("2026-08-15")` es
+      // medianoche UTC, que en LATAM (husos negativos) cae el 14 a la noche y
+      // adelantaba el bloqueo ~1 día. Mismo criterio que los cupones.
       await api.patch(`/super-admin/tenants/${id}/subscription/dates`, {
-        trialEndsAt: newTrialEndsAt ? new Date(newTrialEndsAt).toISOString() : undefined,
-        renewalDate: newRenewalDate ? new Date(newRenewalDate).toISOString() : undefined,
+        trialEndsAt: newTrialEndsAt ? new Date(`${newTrialEndsAt}T23:59:59`).toISOString() : undefined,
+        renewalDate: newRenewalDate ? new Date(`${newRenewalDate}T23:59:59`).toISOString() : undefined,
         reason: datesReason.trim(),
       });
       setNotice('Fechas de la suscripción actualizadas.');
