@@ -8,6 +8,7 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   ValidateIf,
   ValidateNested,
@@ -78,4 +79,10 @@ export class CreatePublicOrderDto {
   @IsString()
   @Length(1, 4000)
   turnstileToken!: string;
+
+  /** Clave de idempotencia del cliente para deduplicar el doble-submit (dos POST
+   *  iguales devuelven el MISMO pedido). Ver CreateGuestOrderDto. */
+  @IsOptional()
+  @IsUUID()
+  idempotencyKey?: string;
 }

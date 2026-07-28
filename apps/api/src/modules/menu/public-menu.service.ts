@@ -347,21 +347,51 @@ export class PublicMenuService {
       };
     });
 
-    const order = await this.prisma.order.create({
-      data: {
-        tenantId: table.tenantId,
-        branchId: table.branchId,
-        tableId: table.id,
-        type: 'DINE_IN',
-        customerName: dto.customerName,
-        customerPhone: dto.customerPhone,
-        notes: dto.notes,
-        subtotal,
-        total: subtotal,
-        items: { create: itemsData },
-      },
-      include: { items: { include: { menuItem: true } } },
-    });
+    // Idempotencia: un doble-submit (doble tap, reintento tras timeout) con la
+    // misma clave devuelve el MISMO pedido en vez de duplicar comanda y cuenta.
+    // Pre-check + catch del índice único (tenantId, idempotencyKey) para la
+    // carrera real de dos POST simultáneos.
+    if (dto.idempotencyKey) {
+      const existente = await this.prisma.order.findFirst({
+        where: { tenantId: table.tenantId, idempotencyKey: dto.idempotencyKey },
+      });
+      if (existente) return { orderId: existente.id, status: existente.status, total: existente.total };
+    }
+
+    const creado = await this.prisma.order
+      .create({
+        data: {
+          tenantId: table.tenantId,
+          branchId: table.branchId,
+          tableId: table.id,
+          type: 'DINE_IN',
+          customerName: dto.customerName,
+          customerPhone: dto.customerPhone,
+          notes: dto.notes,
+          idempotencyKey: dto.idempotencyKey,
+          subtotal,
+          total: subtotal,
+          items: { create: itemsData },
+        },
+        include: { items: { include: { menuItem: true } } },
+      })
+      .then((o) => ({ order: o, nuevo: true as const }))
+      .catch(async (e: { code?: string }) => {
+        if (dto.idempotencyKey && e.code === 'P2002') {
+          const ganador = await this.prisma.order.findFirst({
+            where: { tenantId: table.tenantId, idempotencyKey: dto.idempotencyKey },
+          });
+          if (ganador) return { order: ganador, nuevo: false as const };
+        }
+        throw e;
+      });
+
+    // El que volvió por idempotencia ya tiene sus comandas y la mesa marcada: NO
+    // re-generar (duplicaría la comanda en el KDS).
+    if (!creado.nuevo) {
+      return { orderId: creado.order.id, status: creado.order.status, total: creado.order.total };
+    }
+    const order = creado.order;
 
     // KitchenService lee `TenantPrismaService`, que resuelve el tenant desde
     // el AsyncLocalStorage abierto por `tenantContextMiddleware` en TODA
@@ -557,6 +587,36 @@ export class PublicMenuService {
     }
     await this.assertTenantRecibePedidos(branch.tenantId);
 
+    // Idempotencia: un doble-submit con la misma clave devuelve el pedido YA
+    // creado (con su token de seguimiento si es delivery) en vez de duplicarlo.
+    // Va temprano, antes de revalidar horario/stock: un reintento tiene que
+    // devolver el MISMO resultado aunque el estado del local haya cambiado. El
+    // race concurrente puro lo corta el Turnstile de un solo uso.
+    if (dto.idempotencyKey) {
+      const existente = await this.prisma.order.findFirst({
+        where: { tenantId: branch.tenantId, idempotencyKey: dto.idempotencyKey },
+      });
+      if (existente) {
+        if (existente.type === 'DELIVERY') {
+          const del = await this.prisma.delivery.findFirst({
+            where: { orderId: existente.id },
+            select: { id: true, trackingToken: true },
+          });
+          if (del) {
+            return {
+              orderId: existente.id,
+              deliveryId: del.id,
+              trackingToken: del.trackingToken,
+              fulfillment: dto.fulfillment,
+              status: existente.status,
+              total: existente.total,
+            };
+          }
+        }
+        return { orderId: existente.id, fulfillment: dto.fulfillment, status: existente.status, total: existente.total };
+      }
+    }
+
     // El tipo elegido tiene que estar habilitado por la sucursal — sin esto,
     // un cliente podría forzar un delivery contra un local que sólo hace retiro
     // mandando el body directo.
@@ -674,6 +734,7 @@ export class PublicMenuService {
           customerName: dto.customerName,
           customerPhone: dto.customerPhone,
           notes: dto.notes,
+          idempotencyKey: dto.idempotencyKey,
           subtotal,
           discountTotal,
           deliveryFee: isDelivery ? fee : undefined,

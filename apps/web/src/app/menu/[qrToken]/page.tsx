@@ -158,6 +158,9 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
   // Producto abierto en la hoja de personalización (el que tiene opciones).
   const [customizing, setCustomizing] = useState<MenuItemView | null>(null);
   const lineIdRef = useRef(0);
+  // Idempotencia del intento de pedido: se reusa en un reintento (doble tap /
+  // timeout) para que el server no duplique; se limpia al confirmarse OK.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const [placedOrder, setPlacedOrder] = useState<OrderStatusView | null>(null);
   // placedOrder es un objeto separado de menu (viene del POST /order y del
@@ -315,11 +318,13 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
     if (!menu) return;
     setSubmitError(null);
     setSubmitting(true);
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
     try {
       const res = await api.post<{ orderId: string; status: string; total: string }>(
         `/public/menu/${qrToken}/order`,
         {
           customerName: customerName || undefined,
+          idempotencyKey: idempotencyKeyRef.current,
           notes: orderNotes.trim() || undefined,
           // Se mandan los IDs de las opciones, nunca precios: el servidor
           // resuelve los deltas y recalcula el total.
@@ -333,6 +338,8 @@ export default function PublicMenuPage({ params }: { params: Promise<{ qrToken: 
         },
         { publicEndpoint: true },
       );
+      // Pedido puesto: la próxima confirmación lleva una clave nueva.
+      idempotencyKeyRef.current = null;
       setPlacedOrder({
         id: res.orderId,
         status: res.status,

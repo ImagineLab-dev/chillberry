@@ -318,6 +318,10 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   // Producto abierto en la hoja de personalización (el que tiene opciones).
   const [customizing, setCustomizing] = useState<MenuItemView | null>(null);
   const lineIdRef = useRef(0);
+  // Clave de idempotencia del intento de pedido: se genera al confirmar y se
+  // reusa en un reintento (doble tap / timeout) para que el server no duplique;
+  // se limpia al confirmarse OK, así el próximo pedido lleva una clave nueva.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   // Solo se usa en el flujo de RETIRO: delivery redirige a /track. Es un objeto
   // separado de `menu` (viene del POST y del polling de /status), con el mismo
@@ -540,6 +544,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     if (!menu || !fulfillment) return;
     setSubmitError(null);
     setSubmitting(true);
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
     try {
       const res = await api.post<{
         orderId: string;
@@ -552,6 +557,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         `/public/menu/branch/${slug}/order`,
         {
           fulfillment,
+          idempotencyKey: idempotencyKeyRef.current,
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
           address: fulfillment === 'DELIVERY' ? address.trim() : undefined,
@@ -571,6 +577,8 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         },
         { publicEndpoint: true },
       );
+      // Pedido puesto: la próxima confirmación lleva una clave nueva.
+      idempotencyKeyRef.current = null;
 
       // Delivery: el seguimiento vive en /track (mapa + repartidor por socket).
       if (res.fulfillment === 'DELIVERY' && res.trackingToken) {

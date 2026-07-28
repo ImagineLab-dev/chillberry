@@ -63,4 +63,12 @@ export class CreateGuestOrderDto {
   @IsString()
   @Length(1, 4000)
   turnstileToken!: string;
+
+  /** Clave de idempotencia del cliente para deduplicar el doble-submit: dos POST
+   *  con la misma clave (doble tap en una tablet lenta, reintento tras timeout)
+   *  devuelven el MISMO pedido en vez de duplicar la comanda y la cuenta. Espeja
+   *  a `CreateOrderDto.idempotencyKey` del camino de staff. */
+  @IsOptional()
+  @IsUUID()
+  idempotencyKey?: string;
 }
