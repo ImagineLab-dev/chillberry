@@ -167,13 +167,32 @@ export default function KitchenPage() {
     const socket = connectKitchenSocket();
     socketRef.current = socket;
     socket.on('connect', () => socket.emit('kitchen:join', { branchId }));
-    socket.on('kitchen:task:created', () => {
-      notify({ title: 'Nuevo pedido en cocina', tone: 'info', sound: 'new-order' });
-      loadBoard(branchId);
+
+    // Un pedido genera una comanda por ESTACIÓN, así que el back emite un
+    // `kitchen:task:created` por estación: un pedido con 3 estaciones = 3 eventos
+    // casi simultáneos del MISMO pedido. Antes eso disparaba 3 toasts + 3 sonidos
+    // + 3 recargas. Se avisa UNA sola vez por pedido (dedupe por `orderId` en una
+    // ventana corta) y se agrupan las recargas en una sola (debounce corto).
+    const avisadoPorPedido = new Map<string, number>();
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    const recargarPronto = () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => loadBoard(branchId), 200);
+    };
+    socket.on('kitchen:task:created', (payload?: { orderId?: string }) => {
+      const orderId = payload?.orderId ?? '';
+      const now = Date.now();
+      const ultimoAviso = avisadoPorPedido.get(orderId) ?? 0;
+      if (now - ultimoAviso > 4000) {
+        avisadoPorPedido.set(orderId, now);
+        notify({ title: 'Nuevo pedido en cocina', tone: 'info', sound: 'new-order' });
+      }
+      recargarPronto();
     });
-    socket.on('kitchen:task:updated', () => loadBoard(branchId));
+    socket.on('kitchen:task:updated', () => recargarPronto());
 
     return () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
       socket.disconnect();
       socketRef.current = null;
     };
