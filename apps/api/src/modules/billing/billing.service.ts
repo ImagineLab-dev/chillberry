@@ -555,6 +555,9 @@ export class BillingService {
         throw new NotFoundException(`No se encontró una suscripción para el ref "${ref}" del webhook de dLocal`);
       }
       const pago = await this.dlocal.retrievePaymentStatus(raw.payment_id);
+      this.logger.log(
+        `Webhook dLocal: ref=${ref} payment_id=${raw.payment_id} status=${pago.status} order_id=${pago.orderId ?? '∅'} sub=${subReal.providerSubscriptionId}`,
+      );
       // Defensa contra un `ref` manipulado (viaja en el query, NO lo cubre la
       // firma HMAC del body): si el pago trae nuestro external_id en `order_id`
       // (`tenantId:planId`), se verifica que el tenant coincida con el ref. Así un
@@ -569,15 +572,27 @@ export class BillingService {
             ? 'SUBSCRIPTION_FAILED'
             : null;
       if (!eventType) {
-        // Estado NO terminal (PENDING): todavía no hay nada que aplicar. Se libera
-        // el claim para que el reintento de dLocal (cada 10 min) lo reprocese
-        // cuando el pago llegue a un estado final.
+        // No terminal: no hay nada que aplicar todavía. Se libera el claim para que
+        // el reintento de dLocal (cada 10 min) lo reprocese al llegar a un estado
+        // final. PERO hay que distinguir dos casos: PENDING (esperado) vs un estado
+        // que NO reconocemos — si dLocal usara, p.ej., "APPROVED" o "SUCCESS" en vez
+        // de "PAID", el cobro nunca se aplicaría y quedaría en un loop silencioso.
+        // Por eso el estado desconocido se loguea como WARNING bien visible.
+        if (pago.status === 'PENDING' || pago.status === '') {
+          this.logger.log(`Webhook dLocal: pago aún PENDING (ref=${ref}) — se reintenta`);
+        } else {
+          this.logger.warn(
+            `Webhook dLocal: estado NO reconocido "${pago.status}" (ref=${ref}, payment_id=${raw.payment_id}). ` +
+              `No se aplica ni se marca fallido — revisar el mapeo del adapter contra la respuesta real de dLocal.`,
+          );
+        }
         await this.prisma.paymentWebhookEvent.updateMany({
           where: { id: event.id },
           data: { processedAt: null },
         });
         return { ok: true, pending: true };
       }
+      this.logger.log(`Webhook dLocal: pago ${pago.status} → ${eventType} (ref=${ref})`);
       body = { eventId, eventType, providerSubscriptionId: subReal.providerSubscriptionId };
     } else {
       body = {
@@ -682,6 +697,10 @@ export class BillingService {
           cancelledAt: null,
         },
       });
+      this.logger.log(
+        `Webhook dLocal: suscripción ${sub.id} → plan ${planId} ${sub.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'}, ` +
+          `factura pagada, renueva ${periodEnd.toISOString().slice(0, 10)}`,
+      );
     } else if (body.eventType === 'SUBSCRIPTION_FAILED') {
       if (pendiente) {
         await this.prisma.subscriptionInvoice.update({

@@ -86,6 +86,14 @@ export class DlocalGoAdapter implements SubscriptionProviderAdapter {
       throw new Error(`No se pudo consultar el pago de dLocal (${res.status})`);
     }
     const pago = (await res.json()) as { status?: string; order_id?: string };
+    // Diagnóstico de la PRIMERA prueba real: la forma exacta de esta respuesta no
+    // está confirmada contra dLocal. Se loguean las CLAVES y los campos que nos
+    // importan (NO el body entero, que puede traer datos de tarjeta) para poder
+    // confirmar de un vistazo que `status`/`order_id` llegan con esos nombres. Si
+    // no coinciden, acá se ve al toque en vez de fallar en silencio.
+    this.logger.log(
+      `dLocal retrievePayment ${paymentId}: status=${pago.status ?? '∅'} order_id=${pago.order_id ?? '∅'} keys=[${Object.keys(pago ?? {}).join(',')}]`,
+    );
     return { status: String(pago.status ?? '').toUpperCase(), orderId: pago.order_id ?? null };
   }
 
