@@ -73,7 +73,7 @@ export default function AuditPageView() {
     <div>
       <PageHeader
         title="Auditoría"
-        description="Cada acción de escritura del staff de Smartia sobre un tenant: quién, qué, sobre quién y cuándo."
+        description="Cada acción de escritura del staff de Chillberry sobre un tenant: quién, qué, sobre quién y cuándo."
         actions={data ? <Badge tone="neutral">{data.total} registros</Badge> : undefined}
       />
 

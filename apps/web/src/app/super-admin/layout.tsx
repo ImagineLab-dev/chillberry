@@ -8,7 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { Badge } from '@/components/ui';
 
 /**
- * Layout propio del panel interno de Smartia — NO reusa el de `/admin`, que es
+ * Layout propio del panel interno de Chillberry — NO reusa el de `/admin`, que es
  * el panel de un tenant (su nav apunta a mesas, menú, cocina; nada de eso
  * existe acá) y monta el CommandPalette, que busca recursos del tenant en
  * contexto.
@@ -42,7 +42,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
             <div className="flex min-w-0 items-center gap-2">
               <ShieldCheck className="h-6 w-6 shrink-0 text-primary" />
               <div className="min-w-0">
-                <div className="truncate font-heading text-base font-semibold tracking-tight">Smartia</div>
+                <div className="truncate font-heading text-base font-semibold tracking-tight">Chillberry</div>
                 <div className="text-xs text-muted-foreground">Panel interno</div>
               </div>
             </div>

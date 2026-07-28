@@ -97,7 +97,7 @@ export default function MetricsPage() {
         )}
       </div>
       <p className="mb-6 text-xs text-muted-foreground">
-        Agrupado por la moneda del <strong>plan</strong>, no la del tenant: lo que Smartia cobra está cotizado en la
+        Agrupado por la moneda del <strong>plan</strong>, no la del tenant: lo que Chillberry cobra está cotizado en la
         moneda del plan (hoy USD), mientras que cada restaurante opera en la suya (₲, $, R$...). Se muestran separados
         a propósito — sumar montos de distinta moneda daría un número que no significa nada.
       </p>

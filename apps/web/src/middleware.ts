@@ -75,47 +75,72 @@ function tenantSubdomain(host: string | null): string | null {
   return RESERVADOS.has(sub) ? null : sub;
 }
 
+// Host dedicado del panel interno: `super-admin.<root>`. Es una entrada aparte
+// para el staff (NO un tenant: `super-admin` está en RESERVED_SUBDOMAINS), donde
+// la RAÍZ del host abre el panel de SUPER_ADMIN en vez de la landing de venta.
+// El certificado wildcard y el router `HostRegexp` de Traefik ya lo enrutan al
+// front; la API cae cross-origin contra el apex y el CORS ya habilita los
+// subdominios de chillberry.app, así que esto es sólo cosmético del front.
+function isSuperAdminHost(host: string | null): boolean {
+  if (!host) return false;
+  const h = host.toLowerCase().split(':')[0]!;
+  const root = ROOT_DOMAIN.split(':')[0]!;
+  return h === `super-admin.${root}`;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get('host');
+  const onSuperAdminHost = isSuperAdminHost(host);
 
   // 1) Host de subdominio de tenant → storefront público, y NADA más.
   //    El link `<sub>.chillberry.app` sirve sólo la carta compartible; el staff
   //    entra por el dominio principal. Los deep-links públicos (`/r`, `/track`,
   //    `/menu`, `/s`) y los assets de Next pasan tal cual; todo lo demás se
-  //    reescribe al storefront del tenant.
-  const sub = tenantSubdomain(request.headers.get('host'));
-  if (sub) {
-    const isPassThrough =
-      pathname.startsWith('/_next') ||
-      ASSETS_RAIZ.test(pathname) ||
-      PUBLIC_PATHS.some(
-        (p) =>
-          pathname.startsWith(p) &&
-          p !== '/login' &&
-          p !== '/register' &&
-          p !== '/recuperar' &&
-          p !== '/invitacion',
-      );
-    if (isPassThrough) return NextResponse.next();
-    const url = request.nextUrl.clone();
-    url.pathname = `/s/${sub}`;
-    return NextResponse.rewrite(url);
+  //    reescribe al storefront del tenant. El host del panel interno NO entra
+  //    acá: se maneja aparte más abajo.
+  if (!onSuperAdminHost) {
+    const sub = tenantSubdomain(host);
+    if (sub) {
+      const isPassThrough =
+        pathname.startsWith('/_next') ||
+        ASSETS_RAIZ.test(pathname) ||
+        PUBLIC_PATHS.some(
+          (p) =>
+            pathname.startsWith(p) &&
+            p !== '/login' &&
+            p !== '/register' &&
+            p !== '/recuperar' &&
+            p !== '/invitacion',
+        );
+      if (isPassThrough) return NextResponse.next();
+      const url = request.nextUrl.clone();
+      url.pathname = `/s/${sub}`;
+      return NextResponse.rewrite(url);
+    }
   }
 
   if (ASSETS_RAIZ.test(pathname) || PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
+  // En `super-admin.<root>` la raíz ES el panel. Se mapea '/' -> '/super-admin'
+  // como ruta EFECTIVA para TODO lo que sigue (sesión + rol) y recién si pasa los
+  // chequeos se reescribe la respuesta. No es un bypass: la raíz queda protegida
+  // exactamente igual que /super-admin en el dominio principal.
+  const targetPath = onSuperAdminHost && pathname === '/' ? '/super-admin' : pathname;
+
   const accessToken = request.cookies.get('cb_access')?.value;
   const claims = accessToken ? decodeJwtPayload(accessToken) : null;
 
   // La raíz es la LANDING pública de venta: se muestra a quien no tiene sesión,
   // y con sesión activa se manda al panel que le corresponde (no tiene sentido
-  // venderle el producto a alguien que ya lo usa).
+  // venderle el producto a alguien que ya lo usa). En el host del panel interno
+  // la raíz ya se mapeó a /super-admin, así que este branch no aplica ahí.
   //
   // OJO: la comparación es EXACTA (`=== '/'`) y nunca por prefijo — meter '/'
   // en PUBLIC_PATHS (que usa startsWith) volvería pública TODA la app.
-  if (pathname === '/') {
+  if (targetPath === '/') {
     if (claims && !isExpired(claims)) {
       return NextResponse.redirect(new URL(ROLE_HOME[claims.role] ?? '/login', request.url));
     }
@@ -127,9 +152,16 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const rule = ROUTE_ROLES.find((r) => pathname.startsWith(r.prefix));
+  const rule = ROUTE_ROLES.find((r) => targetPath.startsWith(r.prefix));
   if (rule && !rule.roles.includes(claims.role)) {
     return NextResponse.redirect(new URL(ROLE_HOME[claims.role] ?? '/login', request.url));
+  }
+
+  // Pasó sesión + rol: en el host del panel, reescribir la raíz al panel real.
+  if (onSuperAdminHost && pathname === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/super-admin';
+    return NextResponse.rewrite(url);
   }
 
   return NextResponse.next();
