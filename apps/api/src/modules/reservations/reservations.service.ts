@@ -89,6 +89,29 @@ export class ReservationsService {
       }
     }
 
+    // Anti-doble-reserva también al EDITAR (mismo criterio que en create): mover
+    // una reserva a otra mesa u otro horario no puede pisar otra reserva activa
+    // de esa mesa dentro de ±90 min. `create` ya lo chequeaba y `update` no, así
+    // que la validación se evadía por la puerta de atrás editando. Se excluye la
+    // PROPIA reserva (`id: { not: id }`, si no chocaría consigo misma) y sólo
+    // aplica si el resultado sigue activo (PENDING/CONFIRMED) y con mesa asignada.
+    const nextStatus = dto.status ?? reservation.status;
+    const nextTableId = dto.tableId ?? reservation.tableId;
+    const nextWhen = dto.reservedFor ? new Date(dto.reservedFor) : reservation.reservedFor;
+    const cambiaMesaUHora = dto.tableId !== undefined || dto.reservedFor !== undefined;
+    if (cambiaMesaUHora && nextTableId && (nextStatus === 'PENDING' || nextStatus === 'CONFIRMED')) {
+      const windowMs = 90 * 60 * 1000;
+      const clash = await this.tenantPrisma.client.reservation.findFirst({
+        where: {
+          id: { not: id },
+          tableId: nextTableId,
+          status: { in: ['PENDING', 'CONFIRMED'] },
+          reservedFor: { gte: new Date(nextWhen.getTime() - windowMs), lte: new Date(nextWhen.getTime() + windowMs) },
+        },
+      });
+      if (clash) throw new ConflictException('Esa mesa ya tiene una reserva en ese horario');
+    }
+
     // Sentar la reserva ocupa la mesa (si hay una asignada), igual que abrir
     // una mesa desde el mapa del mesero. Se hace en transacción con el cambio
     // de estado para que no quede una reserva SEATED con la mesa libre.

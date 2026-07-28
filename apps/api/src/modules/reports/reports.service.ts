@@ -223,12 +223,30 @@ export class ReportsService {
       const durationMs = new Date(to).getTime() - fromMs;
       const prevTo = new Date(fromMs - 1);
       const prevFrom = new Date(fromMs - durationMs - 1);
+      // El período anterior se mide con la MISMA vara que el actual: neto de
+      // reembolsos y descartando los pedidos reembolsados por completo. Antes se
+      // sumaba el `total` crudo (BRUTO) y se contaban todos los pedidos, así que
+      // el % de variación comparaba neto (actual) contra bruto (anterior) —
+      // cualquier reembolso del período previo distorsionaba el crecimiento que
+      // ve el dueño (le mostraba caída donde no la hubo, o menos suba de la real).
       const prevOrders = await this.tenantPrisma.client.order.findMany({
         where: { ...branchFilter, status: 'COMPLETED', completedAt: { gte: prevFrom, lte: prevTo } },
-        select: { total: true },
+        select: { id: true, total: true },
       });
-      const previousRevenue = round(prevOrders.reduce((s, o) => s + Number(o.total), 0));
-      const previousOrders = prevOrders.length;
+      const prevRefundRows =
+        prevOrders.length > 0
+          ? await this.tenantPrisma.client.cashMovement.groupBy({
+              by: ['orderId'],
+              where: { type: 'REFUND', orderId: { in: prevOrders.map((o) => o.id) } },
+              _sum: { amount: true },
+            })
+          : [];
+      const prevRefundByOrder = new Map(prevRefundRows.map((r) => [r.orderId, Number(r._sum.amount ?? 0)]));
+      const prevSales = prevOrders
+        .map((o) => ({ net: round(Number(o.total) - (prevRefundByOrder.get(o.id) ?? 0)) }))
+        .filter((o) => o.net > 0.009);
+      const previousRevenue = round(prevSales.reduce((s, o) => s + o.net, 0));
+      const previousOrders = prevSales.length;
       comparison = {
         previousRevenue,
         previousOrders,

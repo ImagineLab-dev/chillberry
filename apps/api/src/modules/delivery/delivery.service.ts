@@ -302,16 +302,21 @@ export class DeliveryService {
 
     const chosen = rankDriverCandidates(scored)[0]!.driver;
 
-    const [updated] = await this.tenantPrisma.client.$transaction([
-      this.tenantPrisma.client.delivery.update({
-        where: { id: deliveryId },
-        data: { driverId: chosen.id, status: 'DRIVER_ASSIGNED', assignedAt: new Date() },
-      }),
-      this.tenantPrisma.client.driver.update({
-        where: { id: chosen.id },
-        data: { activeDeliveriesCount: { increment: 1 } },
-      }),
-    ]);
+    // Compare-and-set sobre PENDING (mismo criterio que deliver/cancel): sólo la
+    // corrida que gana la transición incrementa el contador del repartidor. Sin
+    // esto, si esta auto-asignación corre en paralelo con una reasignación manual
+    // o con el cron, dos asignaciones pisaban el `driverId` (last-write-wins) y
+    // dejaban un `activeDeliveriesCount` inflado por una entrega que quedó de otro.
+    const asignada = await this.tenantPrisma.client.delivery.updateMany({
+      where: { id: deliveryId, status: 'PENDING' },
+      data: { driverId: chosen.id, status: 'DRIVER_ASSIGNED', assignedAt: new Date() },
+    });
+    if (asignada.count === 0) return null; // otro flujo ya lo tomó
+    await this.tenantPrisma.client.driver.update({
+      where: { id: chosen.id },
+      data: { activeDeliveriesCount: { increment: 1 } },
+    });
+    const updated = await this.tenantPrisma.client.delivery.findUniqueOrThrow({ where: { id: deliveryId } });
 
     await this.logEvent(deliveryId, 'DRIVER_ASSIGNED', { driverId: chosen.id });
     this.gateway.emitToDriver(chosen.id, 'delivery:assigned', { deliveryId });
@@ -339,20 +344,27 @@ export class DeliveryService {
     if (!delivery || delivery.status !== 'DRIVER_ASSIGNED') return false;
     const oldDriverId = delivery.driverId;
 
-    await this.tenantPrisma.client.$transaction([
-      this.tenantPrisma.client.delivery.update({
-        where: { id: deliveryId },
+    // Compare-and-set atómico (DRIVER_ASSIGNED -> PENDING): sólo la corrida que
+    // gana la liberación baja el contador del repartidor. Sin esto, dos corridas
+    // del cron a la vez (2 réplicas del API, o el solape de segundos durante un
+    // deploy start-first) leían ambas DRIVER_ASSIGNED y decrementaban
+    // `activeDeliveriesCount` DOS veces — podía quedar negativo y el repartidor
+    // salía siempre como "menos cargado", sobre-asignándosele entregas.
+    const liberada = await this.tenantPrisma.client.$transaction(async (tx) => {
+      const r = await tx.delivery.updateMany({
+        where: { id: deliveryId, status: 'DRIVER_ASSIGNED' },
         data: { status: 'PENDING', driverId: null, assignedAt: null },
-      }),
-      ...(oldDriverId
-        ? [
-            this.tenantPrisma.client.driver.updateMany({
-              where: { id: oldDriverId },
-              data: { activeDeliveriesCount: { decrement: 1 } },
-            }),
-          ]
-        : []),
-    ]);
+      });
+      if (r.count === 0) return false;
+      if (oldDriverId) {
+        await tx.driver.updateMany({
+          where: { id: oldDriverId },
+          data: { activeDeliveriesCount: { decrement: 1 } },
+        });
+      }
+      return true;
+    });
+    if (!liberada) return false;
     await this.logEvent(deliveryId, 'REASSIGNED', { from: oldDriverId });
 
     // Reintenta excluyendo al que no aceptó. Si no hay otro online, queda PENDING
@@ -369,20 +381,34 @@ export class DeliveryService {
     const driver = await this.tenantPrisma.client.driver.findUnique({ where: { id: driverId } });
     if (!driver) throw new NotFoundException('Repartidor no encontrado');
 
-    if (delivery.driverId && delivery.driverId !== driverId) {
+    const previousDriverId = delivery.driverId;
+    // Compare-and-set sobre el estado Y el repartidor leídos: sólo la corrida que
+    // gana la reasignación toca los contadores. Sin esto, dos reasignaciones
+    // manuales simultáneas (o una carrera con el cron / la auto-asignación)
+    // decrementaban al repartidor anterior dos veces y dejaban al nuevo con un
+    // contador inflado por una entrega que en realidad quedó de otro (el `driverId`
+    // se resolvía por last-write-wins). Incluir `driverId: previousDriverId` en el
+    // where hace que también falle si el repartidor cambió por debajo.
+    const reasignada = await this.tenantPrisma.client.delivery.updateMany({
+      where: { id: deliveryId, status: delivery.status, driverId: previousDriverId },
+      data: { driverId, status: 'DRIVER_ASSIGNED', assignedAt: new Date() },
+    });
+    if (reasignada.count === 0) {
+      throw new ConflictException('La entrega ya cambió de estado — recargá y volvé a intentar');
+    }
+    if (previousDriverId && previousDriverId !== driverId) {
       await this.tenantPrisma.client.driver.update({
-        where: { id: delivery.driverId },
+        where: { id: previousDriverId },
         data: { activeDeliveriesCount: { decrement: 1 } },
       });
     }
-    const updated = await this.tenantPrisma.client.delivery.update({
-      where: { id: deliveryId },
-      data: { driverId, status: 'DRIVER_ASSIGNED', assignedAt: new Date() },
-    });
-    await this.tenantPrisma.client.driver.update({
-      where: { id: driverId },
-      data: { activeDeliveriesCount: { increment: 1 } },
-    });
+    if (previousDriverId !== driverId) {
+      await this.tenantPrisma.client.driver.update({
+        where: { id: driverId },
+        data: { activeDeliveriesCount: { increment: 1 } },
+      });
+    }
+    const updated = await this.tenantPrisma.client.delivery.findUniqueOrThrow({ where: { id: deliveryId } });
     await this.logEvent(deliveryId, 'DRIVER_ASSIGNED', { driverId, manual: true });
     this.gateway.emitToDriver(driverId, 'delivery:assigned', { deliveryId });
     this.gateway.emitToTracking(deliveryId, 'delivery:updated', { status: 'DRIVER_ASSIGNED' });
