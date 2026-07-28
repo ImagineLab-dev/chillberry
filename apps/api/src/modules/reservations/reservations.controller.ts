@@ -15,7 +15,7 @@ export class ReservationsController {
 
   @Post()
   create(@Body() dto: CreateReservationDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.reservations.create(dto, user.id);
+    return this.reservations.create(dto, user);
   }
 
   @Get()
@@ -29,7 +29,11 @@ export class ReservationsController {
   }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateReservationDto) {
-    return this.reservations.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateReservationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reservations.update(id, dto, user);
   }
 }

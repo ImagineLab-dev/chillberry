@@ -619,7 +619,14 @@ export class BillingService {
         return { ok: true, duplicate: false };
       }
 
-      const planId = sub.pendingPlanId ?? sub.planId;
+      // El plan que se APLICA sale de la factura que se está pagando, no de
+      // `pendingPlanId`. Si el dueño canceló o bajó de plan DESPUÉS de abrir el
+      // checkout (ambos anulan `pendingPlanId`) y luego paga ese checkout todavía
+      // vivo, hay que aplicarle el plan que la factura cobró: si no, se cobraba el
+      // plan caro (el monto quedó fijado en la factura al contratar) pero se
+      // aplicaba el barato. En una renovación no hay factura pendiente y se usa el
+      // plan vigente (pendingPlanId si quedó uno, o el actual).
+      const planId = pendiente ? pendiente.planId : (sub.pendingPlanId ?? sub.planId);
       let periodEnd: Date;
 
       if (pendiente) {

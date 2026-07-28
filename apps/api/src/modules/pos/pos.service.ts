@@ -208,8 +208,12 @@ export class PosService {
     const expectedCash = Number(session.openingAmount) + delta;
     const difference = dto.countedCash - expectedCash;
 
-    const closed = await this.tenantPrisma.client.cashRegisterSession.update({
-      where: { id: sessionId },
+    // Compare-and-set sobre OPEN: sólo un cierre gana. El chequeo de arriba
+    // (status==='CLOSED') es sobre el snapshot leído; sin condicionar la escritura
+    // por el estado, dos cierres concurrentes calculaban ambos su expectedCash y
+    // escribían los dos. Con el `where: { status: 'OPEN' }` el segundo ve count===0.
+    const closed = await this.tenantPrisma.client.cashRegisterSession.updateMany({
+      where: { id: sessionId, status: 'OPEN' },
       data: {
         status: 'CLOSED',
         closedAt: new Date(),
@@ -218,9 +222,13 @@ export class PosService {
         difference,
       },
     });
+    if (closed.count === 0) {
+      throw new ConflictException('Esta caja ya está cerrada');
+    }
+    const cerrada = await this.tenantPrisma.client.cashRegisterSession.findUniqueOrThrow({ where: { id: sessionId } });
     // `cashTips` no es una columna de la sesión (no quiero migrar por esto):
     // se devuelve en la respuesta del cierre para que la caja lo muestre.
-    return { ...closed, cashTips };
+    return { ...cerrada, cashTips };
   }
 
   async createMovement(sessionId: string, dto: CreateCashMovementDto, userId: string, user: AuthenticatedUser) {
@@ -569,6 +577,25 @@ export class PosService {
               throw new ConflictException(
                 'Este pedido ya fue cobrado desde otra terminal — actualizá la lista antes de volver a cobrar.',
               );
+            }
+            // La caja (`openSession`) se resolvió ANTES de la tx. Si el owner la
+            // cerró entremedio, el SALE en efectivo caería en una sesión ya CLOSED,
+            // fuera de su expectedCash (descuadre + movimiento huérfano). Se re-lee
+            // la sesión DENTRO de la tx Serializable: eso mete su fila en el
+            // read-set, así el compare-and-set de closeSession (que la escribe)
+            // entra en conflicto de serialización y una de las dos aborta. Sin
+            // esto, insertar el CashMovement no toca la fila de la sesión y nada
+            // detectaba la carrera.
+            if (openSession) {
+              const sigueAbierta = await tx.cashRegisterSession.findFirst({
+                where: { id: openSession.id, status: 'OPEN', tenantId: this.tenantPrisma.tenantId },
+                select: { id: true },
+              });
+              if (!sigueAbierta) {
+                throw new ConflictException(
+                  'La caja se cerró mientras cobrabas — abrí una caja antes de cobrar en efectivo.',
+                );
+              }
             }
             const out = [];
             for (const args of cashArgs) {

@@ -9,6 +9,8 @@ import {
 } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { InvoicesService } from '../invoices/invoices.service';
 import { NotificationsService } from '../integrations/notifications.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -41,9 +43,23 @@ export class PaymentsService {
     throw new BadRequestException(`Proveedor "${provider}" todavía no está implementado`);
   }
 
-  async createIntent(dto: CreatePaymentIntentDto) {
+  async createIntent(dto: CreatePaymentIntentDto, user: AuthenticatedUser) {
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: dto.orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // El pago se escribe contra el pedido de `order.branchId`: sin este chequeo,
+    // un cajero atado a la sucursal A podía crear pagos (y listarlos) sobre un
+    // pedido de la B con sólo su UUID. Mismo criterio que charge/refund/discount.
+    assertPuedeUsarSucursal(user, order.branchId);
+
+    // El EFECTIVO no va por acá: este endpoint crea intents ELECTRÓNICOS (el
+    // proveedor confirma por webhook). Un `method:CASH` por esta vía nacía
+    // APPROVED y cerraba el pedido (factura, stock, puntos) SIN registrar el
+    // CashMovement ni exigir caja abierta — el efectivo entraba al sistema sin
+    // pasar por el arqueo, un descuadre/fuga directo. El efectivo se cobra por
+    // `/pos/orders/:id/charge`, que exige caja abierta y anota el movimiento.
+    if (dto.method === PAYMENT_METHOD.Cash) {
+      throw new BadRequestException('El efectivo se cobra desde la caja (POS), no por este endpoint');
+    }
 
     const { amount, billSplit } = await this.resolveTarget(order.id, Number(order.total), dto.billSplitId);
 
@@ -254,7 +270,16 @@ export class PaymentsService {
     return { amount: Number(split.amount), billSplit: split };
   }
 
-  listByOrder(orderId: string) {
+  async listByOrder(orderId: string, user: AuthenticatedUser) {
+    // Mismo aislamiento por sucursal que createIntent: los Payment de un pedido
+    // sólo los ve quien puede operar esa sucursal (sin esto, con el UUID del
+    // pedido de otra sucursal se leían todos sus pagos).
+    const order = await this.tenantPrisma.client.order.findUnique({
+      where: { id: orderId },
+      select: { branchId: true },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    assertPuedeUsarSucursal(user, order.branchId);
     return this.tenantPrisma.client.payment.findMany({ where: { orderId }, orderBy: { createdAt: 'desc' } });
   }
 

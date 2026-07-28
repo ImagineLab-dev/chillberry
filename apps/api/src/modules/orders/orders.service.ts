@@ -483,14 +483,22 @@ export class OrdersService {
       CANCELLED: 'cancelledAt',
     }[nextStatus as 'ACCEPTED' | 'READY' | 'COMPLETED' | 'CANCELLED'];
 
-    const updated = await this.tenantPrisma.client.order.update({
-      where: { id },
+    // Compare-and-set: la transición va condicionada al estado LEÍDO. Sin esto,
+    // dos anulaciones casi simultáneas (doble tap / dos dispositivos) pasaban las
+    // dos —ambas leían PREPARING, ambas escribían CANCELLED— y ambas registraban
+    // la MERMA: stock descontado DOS veces (`registerWasteForOrder` no es
+    // idempotente). Con el `where` sobre el estado leído, sólo una gana y descuenta.
+    const cambiada = await this.tenantPrisma.client.order.updateMany({
+      where: { id, status: order.status },
       data: {
         status: nextStatus,
         ...(timestampField ? { [timestampField]: new Date() } : {}),
         ...(isCancel ? { cancelReason: reason, cancelledById: actingUserId } : {}),
       },
     });
+    if (cambiada.count === 0) {
+      throw new ConflictException('El pedido ya cambió de estado — recargá y volvé a intentar');
+    }
 
     // Anulación DESPUÉS de que cocina lo preparó: la comida se hizo y se tiró,
     // así que los insumos se consumieron igual. Se registran como MERMA.
@@ -501,11 +509,12 @@ export class OrdersService {
     // acordarse de cargar la merma a mano.
     //
     // Sólo desde PREPARING en adelante: si se anula en WAITING o ACCEPTED, la
-    // comida no se llegó a hacer y no hay nada que perder.
+    // comida no se llegó a hacer y no hay nada que perder. Corre sólo el ganador
+    // del compare-and-set de arriba, así que la merma se registra una única vez.
     if (isCancel && (order.status === 'PREPARING' || order.status === 'READY')) {
       await this.inventory.registerWasteForOrder(id, reason!.trim());
     }
 
-    return updated;
+    return this.getOrThrow(id);
   }
 }

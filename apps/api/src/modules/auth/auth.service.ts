@@ -228,10 +228,19 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido');
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: session.id },
+    // Compare-and-set: el refresh es de UN SOLO USO. Sin condicionar por
+    // `revokedAt: null`, dos POST /auth/refresh con el MISMO token (doble tap,
+    // reintento por timeout, dos pestañas) pasaban los dos y emitían DOS familias
+    // de sesión vivas a partir de un token de un solo uso. El `updateMany` con el
+    // estado en el where hace la rotación atómica: sólo quien revoca (count===1)
+    // sigue; el perdedor se rechaza. Mismo patrón que `acceptInvite`.
+    const revocada = await this.prisma.refreshToken.updateMany({
+      where: { id: session.id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (revocada.count === 0) {
+      throw new UnauthorizedException('Refresh token inválido');
+    }
 
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: session.userId } });
     // `login` valida `user.active`, pero esto NO lo hacía: como cada refresh

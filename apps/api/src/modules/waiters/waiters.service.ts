@@ -150,7 +150,25 @@ export class WaitersService {
     }
     assertPuedeUsarSucursal(actor, primaryOrder.branchId);
 
+    // La mesa PRIMARIA tampoco puede tener una parte ya cobrada: fusionarle más
+    // platos e incrementar su total dejaría ese split pagado (monto fijo) sin
+    // cubrir el nuevo total, y `split` bloquea re-dividir cuando hay partes pagas
+    // → esos platos quedan prácticamente incobrables (sub-cobro). addItems/
+    // removeItem/split ya bloquean sobre el pedido que crece; merge lo chequeaba
+    // en las secundarias pero NO en la primaria, que es justo la que crece acá.
+    const primaryPaidSplits = await this.tenantPrisma.client.billSplit.count({
+      where: { orderId: primaryOrder.id, paid: true },
+    });
+    if (primaryPaidSplits > 0) {
+      throw new ConflictException(
+        'La mesa primaria ya tiene parte de la cuenta pagada: no se le pueden fusionar más mesas. Cobrá el saldo por separado.',
+      );
+    }
+
     let addedSubtotal = 0;
+    let addedTax = 0;
+    let addedDiscount = 0;
+    let addedTotal = 0;
 
     for (const tableId of secondaryTableIds) {
       const table = await this.tenantPrisma.client.table.findUnique({ where: { id: tableId } });
@@ -192,7 +210,24 @@ export class WaitersService {
           where: { orderId: order.id },
           data: { orderId: primaryOrder.id },
         });
+        // Se trasladan TODOS los componentes del pedido secundario, no sólo el
+        // subtotal: si esa mesa tenía un descuento (su `total` < `subtotal`),
+        // sumar sólo el subtotal al total de la primaria cobraba el descuento de
+        // más (el comensal pagaba de más) y rompía el invariante
+        // total = subtotal + tax − descuento. Sumando cada campo por separado, el
+        // total de la primaria sube exactamente lo que esa mesa debía (su `total`).
         addedSubtotal += Number(order.subtotal);
+        addedTax += Number(order.taxTotal);
+        addedDiscount += Number(order.discountTotal);
+        addedTotal += Number(order.total);
+        // Las filas Discount se re-apuntan a la primaria (como los items y las
+        // comandas): así el `discountTotal` que le sumamos queda respaldado por
+        // filas reales y el descuento sigue apareciendo en el panel de control,
+        // colgado del pedido vivo y no del que se cancela.
+        await this.tenantPrisma.client.discount.updateMany({
+          where: { orderId: order.id },
+          data: { orderId: primaryOrder.id },
+        });
         await this.tenantPrisma.client.order.update({
           where: { id: order.id },
           data: {
@@ -210,12 +245,17 @@ export class WaitersService {
     // subtotal/total desde los valores leidos al ENTRAR al merge: si un mozo
     // agregaba una ronda a la mesa primaria mientras el merge corria, ese
     // increment quedaba pisado — los items existian pero no se cobraban. Sumar
-    // el delta preserva cualquier cambio concurrente, y como solo se mueve el
-    // subtotal, el total se mueve exactamente lo mismo (tax/descuento/envio de
-    // la primaria no cambian aca) — misma logica que addItems.
+    // el delta preserva cualquier cambio concurrente. Se incrementa cada campo por
+    // su delta (no sólo el subtotal) para no cobrar de más el descuento de las
+    // secundarias y mantener total = subtotal + tax − descuento.
     await this.tenantPrisma.client.order.update({
       where: { id: primaryOrder.id },
-      data: { subtotal: { increment: addedSubtotal }, total: { increment: addedSubtotal } },
+      data: {
+        subtotal: { increment: addedSubtotal },
+        taxTotal: { increment: addedTax },
+        discountTotal: { increment: addedDiscount },
+        total: { increment: addedTotal },
+      },
     });
 
     await this.tenantPrisma.client.tableMergeLog.create({

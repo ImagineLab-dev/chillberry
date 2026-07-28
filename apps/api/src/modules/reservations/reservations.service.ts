@@ -1,14 +1,20 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { CreateReservationDto, UpdateReservationDto } from './dto/reservation.dto';
 
 @Injectable()
 export class ReservationsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  async create(dto: CreateReservationDto, userId: string) {
+  async create(dto: CreateReservationDto, actor: AuthenticatedUser) {
     const branch = await this.tenantPrisma.client.branch.findUnique({ where: { id: dto.branchId } });
     if (!branch) throw new NotFoundException('Sucursal no encontrada');
+    // `dto.branchId` lo elige el cliente: sin esto, un mesero/admin atado a la
+    // sucursal A creaba reservas (y ocupaba mesas) en la B. Mismo criterio que
+    // tables.create. El OWNER/ADMIN sin branch fijo pasa (opera todo el local).
+    assertPuedeUsarSucursal(actor, dto.branchId);
 
     const when = new Date(dto.reservedFor);
 
@@ -51,7 +57,7 @@ export class ReservationsService {
         partySize: dto.partySize,
         reservedFor: new Date(dto.reservedFor),
         notes: dto.notes,
-        createdById: userId,
+        createdById: actor.id,
       },
       include: { table: { select: { code: true } } },
     });
@@ -77,9 +83,14 @@ export class ReservationsService {
     });
   }
 
-  async update(id: string, dto: UpdateReservationDto) {
+  async update(id: string, dto: UpdateReservationDto, actor: AuthenticatedUser) {
     const reservation = await this.tenantPrisma.client.reservation.findUnique({ where: { id } });
     if (!reservation) throw new NotFoundException('Reserva no encontrada');
+    // Aislamiento por sucursal: un empleado atado a la sucursal A no puede operar
+    // (sentar/cancelar, y con ello ocupar una mesa) una reserva de la B. `update`
+    // sólo tenía el filtro de tenant, no el de sucursal — a diferencia de las
+    // lecturas, que ya usan @BranchScope.
+    assertPuedeUsarSucursal(actor, reservation.branchId);
 
     if (dto.tableId) {
       const table = await this.tenantPrisma.client.table.findUnique({ where: { id: dto.tableId } });

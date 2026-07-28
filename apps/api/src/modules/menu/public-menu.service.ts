@@ -310,7 +310,16 @@ export class PublicMenuService {
 
     const menuItemIds = [...new Set(dto.items.map((i) => i.menuItemId))];
     const menuItems = await this.prisma.menuItem.findMany({
-      where: { id: { in: menuItemIds }, branchId: table.branchId, active: true },
+      // También se exige que la CATEGORÍA esté activa (o que el item no tenga
+      // categoría): desactivar una categoría no cascada a sus items (siguen
+      // active:true), la carta pública sí los oculta, pero un cliente con la carta
+      // cacheada o el id directo podía pedir por acá un producto ya retirado.
+      where: {
+        id: { in: menuItemIds },
+        branchId: table.branchId,
+        active: true,
+        OR: [{ categoryId: null }, { category: { active: true } }],
+      },
     });
     const menuItemById = new Map(menuItems.map((item) => [item.id, item]));
 
@@ -653,7 +662,15 @@ export class PublicMenuService {
 
     const menuItemIds = [...new Set(dto.items.map((i) => i.menuItemId))];
     const menuItems = await this.prisma.menuItem.findMany({
-      where: { id: { in: menuItemIds }, branchId: branch.id, active: true },
+      // Igual que en createGuestOrder: la categoría desactivada no cascada a los
+      // items, así que se exige acá que la categoría siga activa (o item sin
+      // categoría) para que un id/carta stale no cuele un producto retirado.
+      where: {
+        id: { in: menuItemIds },
+        branchId: branch.id,
+        active: true,
+        OR: [{ categoryId: null }, { category: { active: true } }],
+      },
     });
     const missing = menuItemIds.filter((id) => !menuItems.some((m) => m.id === id));
     if (missing.length > 0) {

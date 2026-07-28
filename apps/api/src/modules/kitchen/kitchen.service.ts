@@ -291,28 +291,38 @@ export class KitchenService {
       await this.setOrderStatus(orderId, 'ACCEPTED', 'PREPARING');
     }
     if (allDone && order.status === 'PREPARING') {
-      await this.setOrderStatus(orderId, 'PREPARING', 'READY');
+      const paso = await this.setOrderStatus(orderId, 'PREPARING', 'READY');
 
       // Avisar "listo": en vivo a las pantallas de la sucursal (el mozo escucha
       // `order:ready` en el mismo namespace `/kitchen`), y al cliente por
       // los avisos si dejó teléfono (take away / delivery). Best-effort: nunca
       // rompe el avance de estado.
-      this.gateway.emitToBranch(order.branchId, 'order:ready', {
-        orderId,
-        tableCode: order.table?.code ?? null,
-        type: order.type,
-      });
-      const ref = order.table?.code ? `mesa ${order.table.code}` : null;
-      await this.notifications.notifyOrderReady(order.tenantId, order.customerPhone, ref).catch(() => {});
+      //
+      // Sólo avisa quien GANA la transición PREPARING->READY. Si dos estaciones
+      // cierran su última tarea casi a la vez, ambas evaluaban `allDone` sobre el
+      // mismo snapshot PREPARING y ambas mandaban el aviso (dos push "pedido listo"
+      // al cliente). El compare-and-set de `setOrderStatus` deja pasar a uno solo.
+      if (paso) {
+        this.gateway.emitToBranch(order.branchId, 'order:ready', {
+          orderId,
+          tableCode: order.table?.code ?? null,
+          type: order.type,
+        });
+        const ref = order.table?.code ? `mesa ${order.table.code}` : null;
+        await this.notifications.notifyOrderReady(order.tenantId, order.customerPhone, ref).catch(() => {});
+      }
     }
   }
 
-  private async setOrderStatus(orderId: string, from: OrderStatus, to: OrderStatus) {
-    if (!canTransitionOrder(from, to)) return;
+  /** Devuelve true sólo si ESTA llamada hizo la transición (compare-and-set sobre
+   *  `from`). Permite que el caller dispare avisos una única vez ante carreras. */
+  private async setOrderStatus(orderId: string, from: OrderStatus, to: OrderStatus): Promise<boolean> {
+    if (!canTransitionOrder(from, to)) return false;
     const timestampField = { ACCEPTED: 'acceptedAt', READY: 'readyAt' }[to as 'ACCEPTED' | 'READY'];
-    await this.tenantPrisma.client.order.update({
-      where: { id: orderId },
+    const cambiada = await this.tenantPrisma.client.order.updateMany({
+      where: { id: orderId, status: from },
       data: { status: to, ...(timestampField ? { [timestampField]: new Date() } : {}) },
     });
+    return cambiada.count === 1;
   }
 }
