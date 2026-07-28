@@ -194,6 +194,28 @@ export class BillingService {
   }
 
   /**
+   * Límites EFECTIVOS del tenant (plan + override), con el nombre del plan para
+   * el mensaje. `null` si no tiene suscripción (mismo fail-open que los asserts).
+   *
+   * Lo consume el re-chequeo bajo advisory-lock del alta de sucursal/usuario
+   * (BranchesService/UsersService): el límite del plan NO corre riesgo de carrera
+   * —es el `count` el que sí—, así que se lee acá (fuera del lock) y se compara
+   * adentro. Cierra el race check-then-act sin duplicar la lógica de límites.
+   */
+  async getEffectiveLimits(): Promise<{ maxBranches: number; maxUsers: number; planName: string } | null> {
+    const sub = await this.tenantPrisma.client.subscription.findUnique({
+      where: { tenantId: this.tenantPrisma.tenantId },
+      include: { plan: true },
+    });
+    if (!sub) return null;
+    const limits = effectiveLimits(sub.plan.limits as unknown as PlanLimits, {
+      maxBranches: sub.maxBranchesOverride,
+      maxUsers: sub.maxUsersOverride,
+    });
+    return { maxBranches: limits.maxBranches, maxUsers: limits.maxUsers, planName: sub.plan.name };
+  }
+
+  /**
    * Crea un intento de suscripción pago (DLocal sandbox) para el plan
    * elegido. El plan solo se aplica de verdad cuando llega el webhook de
    * aprobación (`processWebhook`) — mismo patrón que `Payment` queda

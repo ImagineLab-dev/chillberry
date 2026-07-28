@@ -32,8 +32,27 @@ export class BranchesService {
     // control (ver checklist de verificación de la Fase 6 del plan original).
     await this.billing.assertCanCreateBranch();
 
-    const branch = await this.tenantPrisma.client.branch.create({
-      data: { ...dto, tenantId: this.tenantPrisma.tenantId },
+    // El chequeo de arriba y el `create` NO son atómicos: dos altas simultáneas
+    // del mismo tenant contaban las dos "N < max" y creaban las dos, pasando el
+    // tope del plan (bypass del paywall). Se cierra con un advisory lock
+    // POR-TENANT: la 2da espera a que la 1ra commitee, re-cuenta adentro del
+    // lock y ve el total nuevo. El límite se lee fuera del lock (no corre carrera).
+    const limits = await this.billing.getEffectiveLimits();
+    const lockKey = `${this.tenantPrisma.tenantId}:branch`;
+    const branch = await this.tenantPrisma.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+      if (limits) {
+        const count = await tx.branch.count();
+        if (count >= limits.maxBranches) {
+          throw new ConflictException({
+            code: 'PLAN_LIMIT_EXCEEDED',
+            message: `Tu plan "${limits.planName}" permite hasta ${limits.maxBranches} sucursal(es). Actualizá tu plan para agregar más.`,
+            current: count,
+            limit: limits.maxBranches,
+          });
+        }
+      }
+      return tx.branch.create({ data: { ...dto, tenantId: this.tenantPrisma.tenantId } });
     });
     await this.kitchen.ensureDefaultStations(branch.id);
     return branch;

@@ -78,19 +78,40 @@ export class UsersService {
     const passwordHash = await argon2.hash(dto.password ?? randomBytes(24).toString('hex'));
     const invitationToken = invita ? randomBytes(24).toString('hex') : null;
 
-    const creado = await this.tenantPrisma.client.user.create({
-      data: {
-        tenantId: this.tenantPrisma.tenantId,
-        email: dto.email.toLowerCase(),
-        name: dto.name,
-        passwordHash,
-        role: dto.role,
-        phone: dto.phone,
-        branchId: dto.branchId ?? null,
-        invitationToken,
-        invitationExpiresAt: invita ? vencimientoDeInvitacion() : null,
-      },
-      select: SELECT_CON_INVITE,
+    // Advisory lock por-tenant (como en BranchesService): cierra el race del
+    // límite de usuarios activos — dos altas simultáneas contaban las dos por
+    // debajo del tope y creaban las dos, pasando el límite. Solo el count+create
+    // van en la txn; el mail de invitación y el perfil de driver quedan afuera
+    // (efectos que no deben ir dentro de una transacción).
+    const limits = await this.billing.getEffectiveLimits();
+    const lockKey = `${this.tenantPrisma.tenantId}:user`;
+    const creado = await this.tenantPrisma.client.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+      if (limits) {
+        const activos = await tx.user.count({ where: { active: true } });
+        if (activos >= limits.maxUsers) {
+          throw new ConflictException({
+            code: 'PLAN_LIMIT_EXCEEDED',
+            message: `Tu plan "${limits.planName}" permite hasta ${limits.maxUsers} usuario(s) activo(s). Desactivá alguno o actualizá tu plan.`,
+            current: activos,
+            limit: limits.maxUsers,
+          });
+        }
+      }
+      return tx.user.create({
+        data: {
+          tenantId: this.tenantPrisma.tenantId,
+          email: dto.email.toLowerCase(),
+          name: dto.name,
+          passwordHash,
+          role: dto.role,
+          phone: dto.phone,
+          branchId: dto.branchId ?? null,
+          invitationToken,
+          invitationExpiresAt: invita ? vencimientoDeInvitacion() : null,
+        },
+        select: SELECT_CON_INVITE,
+      });
     });
 
     if (invita && invitationToken) {
