@@ -27,6 +27,21 @@ export default function LoginPage() {
     try {
       await login(email, password, turnstileToken);
       const claims = getCurrentClaims();
+      // El panel interno vive en su propio subdominio (super-admin.<root>). Si un
+      // super-admin se loguea en el dominio principal, hay que SALTAR con recarga
+      // dura (window.location), NO con router.replace: la navegación soft de Next
+      // no cruza de subdominio y terminaba renderizando el panel en el apex. La
+      // cookie ya es de dominio (.<root>), así que la sesión viaja y no re-pide
+      // login. En el propio subdominio (o en dev sin subdominio) no aplica.
+      if (
+        claims?.role === 'SUPER_ADMIN' &&
+        typeof window !== 'undefined' &&
+        !window.location.host.startsWith('super-admin.')
+      ) {
+        const base = window.location.host.replace(/^www\./, '');
+        window.location.href = `${window.location.protocol}//super-admin.${base}/super-admin/tenants`;
+        return;
+      }
       router.replace((claims && ROLE_HOME[claims.role]) || '/');
     } catch (err) {
       setError((err as ApiError).message ?? 'Error al iniciar sesión');
