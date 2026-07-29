@@ -135,6 +135,11 @@ export function middleware(request: NextRequest) {
   if (!onSuperAdminHost && pathname.startsWith('/super-admin')) {
     const url = request.nextUrl.clone();
     url.hostname = `super-admin.${ROOT_DOMAIN.split(':')[0]!}`;
+    // Limpiar el puerto: detrás de Traefik `nextUrl` trae el puerto INTERNO del
+    // container (3000) y se colaba en el Location público
+    // (`super-admin.chillberry.app:3000`, que no está expuesto → no carga). Sin
+    // puerto, el navegador usa el 443 de https.
+    url.port = '';
     return NextResponse.redirect(url);
   }
 
