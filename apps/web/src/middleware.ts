@@ -124,6 +124,20 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // El panel interno vive SÓLO en `super-admin.<root>`. En el apex (o www) se
+  // redirige CUALQUIER `/super-admin*` al subdominio dedicado: bookmarks, links
+  // viejos, y el super-admin que aterriza acá tras loguearse (su ROLE_HOME es
+  // `/super-admin/tenants`, que cae en el apex y de acá salta al subdominio). Así
+  // el dominio público no expone el panel interno. En el propio host del panel no
+  // corre (gated por !onSuperAdminHost); en subdominios de tenant tampoco llega
+  // (esos ya se resolvieron y retornaron arriba). La sesión NO se pierde en el
+  // salto: en producción la cookie es de dominio (`.<root>`), compartida.
+  if (!onSuperAdminHost && pathname.startsWith('/super-admin')) {
+    const url = request.nextUrl.clone();
+    url.hostname = `super-admin.${ROOT_DOMAIN.split(':')[0]!}`;
+    return NextResponse.redirect(url);
+  }
+
   // En `super-admin.<root>` la raíz ES el panel. Se mapea '/' -> '/super-admin'
   // como ruta EFECTIVA para TODO lo que sigue (sesión + rol) y recién si pasa los
   // chequeos se reescribe la respuesta. No es un bypass: la raíz queda protegida
