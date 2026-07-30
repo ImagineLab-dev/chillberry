@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { safeJsonLd } from '@/lib/safe-jsonld';
 
 /**
  * Storefront de un tenant por subdominio (`<sub>.chillberry.app`, reescrito a
@@ -94,7 +95,7 @@ export default async function StorefrontLayout({
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
         />
       )}
       {children}

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { safeJsonLd } from '@/lib/safe-jsonld';
 
 /**
  * La carta (`/r/[slug]/page.tsx`) es un componente client (carrito, mapa, etc.),
@@ -132,7 +133,7 @@ export default async function CartaLayout({
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
         />
       )}
       {children}
