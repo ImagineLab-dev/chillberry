@@ -92,7 +92,7 @@ services:
           memory: 1G
 
   api:
-    image: chillberry-api:41
+    image: chillberry-api:42
     environment:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: ${DATABASE_URL}
@@ -148,7 +148,7 @@ services:
         order: start-first
 
   web:
-    image: chillberry-web:54
+    image: chillberry-web:55
     networks:
       easypanel:
         aliases:

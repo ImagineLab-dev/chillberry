@@ -37,8 +37,12 @@ export class InventoryController {
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Patch('ingredients/:id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateIngredientDto) {
-    return this.inventory.updateIngredient(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateIngredientDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.inventory.updateIngredient(id, dto, user);
   }
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
@@ -48,7 +52,7 @@ export class InventoryController {
     @Body() dto: AdjustStockDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.inventory.adjustStock(id, dto, user.id);
+    return this.inventory.adjustStock(id, dto, user);
   }
 
   // Conteo físico: setea el stock al valor contado (registra el delta).
@@ -59,20 +63,20 @@ export class InventoryController {
     @Body() dto: CountStockDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.inventory.countStock(id, dto, user.id);
+    return this.inventory.countStock(id, dto, user);
   }
 
   // Historial de movimientos de un insumo.
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Get('ingredients/:id/movements')
-  movements(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inventory.listMovements(id);
+  movements(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.inventory.listMovements(id, user);
   }
 
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin)
   @Delete('ingredients/:id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inventory.removeIngredient(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.inventory.removeIngredient(id, user);
   }
 
   // -------------------------------------------------------------- recetas

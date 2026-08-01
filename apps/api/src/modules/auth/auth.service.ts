@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import { findDlocalCountry, USER_ROLE } from '@chillberry/domain';
+import { logger } from '../../common/logging/logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { loadEnv } from '../../config/env';
 import { VerificationService } from './verification.service';
@@ -272,15 +273,24 @@ export class AuthService {
     // Una cuenta desactivada tampoco recibe código: recuperarla no serviría de
     // nada porque el login la rechaza igual.
     if (user && user.active) {
-      await this.verification.emitir({
-        email,
-        purpose: 'PASSWORD_RESET',
-        asunto: 'Tu código para recuperar la cuenta',
-        titulo: 'Recuperá tu cuenta',
-        bajada: `Hola ${user.name}, usá este código para poner una contraseña nueva.`,
-        siNoFuiste:
-          'Si no pediste recuperar la cuenta, ignorá este mensaje: tu contraseña sigue siendo la misma.',
-      });
+      // `emitir` va best-effort y CUALQUIER error se traga acá —incluido el 429
+      // de "demasiados códigos en una hora"— para no romper la respuesta
+      // constante. Si ese 429 se propagara, el status distinguiría las cuentas
+      // reales+activas (para un email inexistente `emitir` nunca corre y siempre
+      // da 200), reabriendo el oráculo de enumeración que este endpoint promete
+      // cerrar. El rate-limit sigue funcionando (no se manda el mail); sólo se
+      // uniforma la respuesta. Se loguea para diagnóstico.
+      await this.verification
+        .emitir({
+          email,
+          purpose: 'PASSWORD_RESET',
+          asunto: 'Tu código para recuperar la cuenta',
+          titulo: 'Recuperá tu cuenta',
+          bajada: `Hola ${user.name}, usá este código para poner una contraseña nueva.`,
+          siNoFuiste:
+            'Si no pediste recuperar la cuenta, ignorá este mensaje: tu contraseña sigue siendo la misma.',
+        })
+        .catch((err) => logger.warn({ err: (err as Error).message }, 'reset: emitir fallo (respuesta constante)'));
     }
 
     return { ok: true };

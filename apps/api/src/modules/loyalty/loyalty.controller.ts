@@ -33,7 +33,7 @@ export class LoyaltyController {
   @Roles(USER_ROLE.Owner, USER_ROLE.Admin, USER_ROLE.Cashier)
   @Post('redeem')
   redeem(@Body() dto: RedeemDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.loyalty.redeem({ orderId: dto.orderId, phone: dto.phone, points: dto.points, userId: user.id });
+    return this.loyalty.redeem({ orderId: dto.orderId, phone: dto.phone, points: dto.points, actor: user });
   }
 
   // Ajuste manual de puntos (corrección/cortesía) — dueño/admin.

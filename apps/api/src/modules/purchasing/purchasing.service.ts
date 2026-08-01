@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
@@ -67,7 +69,7 @@ export class PurchasingService {
     });
   }
 
-  async getPurchaseOrder(id: string) {
+  async getPurchaseOrder(id: string, actor: AuthenticatedUser) {
     const po = await this.tenantPrisma.client.purchaseOrder.findUnique({
       where: { id },
       include: {
@@ -76,6 +78,11 @@ export class PurchasingService {
       },
     });
     if (!po) throw new NotFoundException('Orden de compra no encontrada');
+    // Aislamiento por sucursal: recibir/cancelar/leer una OC toca stock y costeo
+    // de esa sucursal. Un admin atado a la sucursal A no puede operar una OC de la
+    // B con sólo el UUID (createPurchaseOrder ya validaba sucursal al crear; el
+    // resto de las operaciones se habían quedado sin el chequeo).
+    assertPuedeUsarSucursal(actor, po.branchId);
     return po;
   }
 
@@ -125,8 +132,8 @@ export class PurchasingService {
   }
 
   /** DRAFT → ORDERED, o cancelar (DRAFT/ORDERED → CANCELLED). No sobre RECEIVED. */
-  async setStatus(id: string, next: 'ORDERED' | 'CANCELLED') {
-    const po = await this.getPurchaseOrder(id);
+  async setStatus(id: string, next: 'ORDERED' | 'CANCELLED', actor: AuthenticatedUser) {
+    const po = await this.getPurchaseOrder(id, actor);
     if (po.status === 'RECEIVED') {
       throw new ConflictException('La orden ya fue recibida — no se puede cambiar su estado');
     }
@@ -141,8 +148,8 @@ export class PurchasingService {
    * libro mayor y actualiza el costo unitario del insumo al de la compra. Todo
    * en una transacción; sólo una vez (RECEIVED es terminal).
    */
-  async receive(id: string, userId: string) {
-    const po = await this.getPurchaseOrder(id);
+  async receive(id: string, actor: AuthenticatedUser) {
+    const po = await this.getPurchaseOrder(id, actor);
     if (po.status === 'RECEIVED') throw new ConflictException('La orden ya fue recibida');
     if (po.status === 'CANCELLED') throw new ConflictException('La orden está cancelada — no se puede recibir');
     if (po.items.length === 0) throw new BadRequestException('La orden no tiene renglones');
@@ -177,12 +184,12 @@ export class PurchasingService {
             type: 'PURCHASE',
             quantityDelta: item.quantity,
             reason: `OC ${po.id.slice(0, 8)} — ${po.supplier.name}`,
-            userId,
+            userId: actor.id,
           },
         });
       }
     });
-    return this.getPurchaseOrder(id);
+    return this.getPurchaseOrder(id, actor);
   }
 
   // ----------------------------------------------------------------- helpers

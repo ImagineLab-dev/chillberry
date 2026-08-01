@@ -40,8 +40,8 @@ export class PurchasingController {
   }
 
   @Get('orders/:id')
-  getOrder(@Param('id', ParseUUIDPipe) id: string) {
-    return this.purchasing.getPurchaseOrder(id);
+  getOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.purchasing.getPurchaseOrder(id, user);
   }
 
   @Post('orders')
@@ -52,16 +52,16 @@ export class PurchasingController {
   // Recibir → suma stock + costo + movimientos PURCHASE.
   @Post('orders/:id/receive')
   receiveOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.purchasing.receive(id, user.id);
+    return this.purchasing.receive(id, user);
   }
 
   @Patch('orders/:id/order')
-  markOrdered(@Param('id', ParseUUIDPipe) id: string) {
-    return this.purchasing.setStatus(id, 'ORDERED');
+  markOrdered(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.purchasing.setStatus(id, 'ORDERED', user);
   }
 
   @Patch('orders/:id/cancel')
-  cancelOrder(@Param('id', ParseUUIDPipe) id: string) {
-    return this.purchasing.setStatus(id, 'CANCELLED');
+  cancelOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.purchasing.setStatus(id, 'CANCELLED', user);
   }
 }

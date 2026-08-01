@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { applyDiscountToOrder } from '@chillberry/domain';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { UpdateProgramDto } from './dto/loyalty.dto';
 
 @Injectable()
@@ -205,7 +207,7 @@ export class LoyaltyService {
    * validación de tope que el descuento del POS (`applyDiscountToOrder`), así
    * que un canje tampoco puede dejar el total negativo.
    */
-  async redeem(args: { orderId: string; phone: string; points: number; userId: string }) {
+  async redeem(args: { orderId: string; phone: string; points: number; actor: AuthenticatedUser }) {
     if (args.points <= 0) throw new BadRequestException('La cantidad de puntos a canjear tiene que ser mayor a 0');
 
     const program = await this.tenantPrisma.client.loyaltyProgram.findUnique({
@@ -221,6 +223,11 @@ export class LoyaltyService {
 
     const order = await this.tenantPrisma.client.order.findUnique({ where: { id: args.orderId } });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    // Aislamiento por sucursal (mismo criterio que pos.applyDiscount): canjear
+    // puntos crea un Discount que baja el total del pedido — es plata. Un cajero
+    // atado a la sucursal A no puede canjear sobre un pedido de la B. Este era el
+    // segundo write de plata que se había quedado sin el chequeo.
+    assertPuedeUsarSucursal(args.actor, order.branchId);
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new ConflictException('No se puede canjear sobre un pedido cerrado');
     }
@@ -290,7 +297,7 @@ export class LoyaltyService {
           type: 'FIXED_AMOUNT',
           value: discountAmount,
           amount: discountAmount,
-          appliedById: args.userId,
+          appliedById: args.actor.id,
           reason: `Canje de ${pointsToRedeem} puntos`,
         },
       });

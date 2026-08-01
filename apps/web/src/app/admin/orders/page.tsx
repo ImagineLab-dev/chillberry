@@ -4,6 +4,7 @@ import { AyudaSeccion } from '@/components/ayuda-seccion';
 import { useEffect, useRef, useState } from 'react';
 import { Ban, FileText, Plus, ReceiptText, Send, Undo2, X } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { makeUuid } from '@/lib/uuid';
 import { formatMoney } from '@chillberry/domain';
 import { ORDER_STATUS_LABEL } from '@/lib/status-labels';
 import { ItemModifierPicker, modifiersSatisfied, type ModifierGroupView } from '@/components/item-modifier-picker';
@@ -219,7 +220,7 @@ export default function OrdersPage() {
     if (creating) return; // guard de doble-submit: no disparar dos pedidos
     setCreating(true);
     setError(null);
-    if (!orderKeyRef.current) orderKeyRef.current = crypto.randomUUID();
+    if (!orderKeyRef.current) orderKeyRef.current = makeUuid();
     try {
       await api.post('/orders', {
         branchId,

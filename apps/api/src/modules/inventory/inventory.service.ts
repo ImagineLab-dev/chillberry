@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantPrismaService } from '../../prisma/tenant-prisma.service';
+import { assertPuedeUsarSucursal } from '../../common/security/branch-scope';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { logger } from '../../common/logging/logger';
 import { CreateIngredientDto } from './dto/create-ingredient.dto';
 import { UpdateIngredientDto } from './dto/update-ingredient.dto';
@@ -56,8 +58,8 @@ export class InventoryService {
     }
   }
 
-  async updateIngredient(id: string, dto: UpdateIngredientDto) {
-    await this.getIngredientOrThrow(id);
+  async updateIngredient(id: string, dto: UpdateIngredientDto, actor: AuthenticatedUser) {
+    await this.getIngredientOrThrow(id, actor);
     try {
       return await this.tenantPrisma.client.ingredient.update({
         where: { id },
@@ -85,8 +87,8 @@ export class InventoryService {
 
   /** Suma (o resta, si `delta` es negativo) al stock — para reponer, corregir o
    *  cargar merma. Deja una fila en el libro mayor (`StockMovement`). */
-  async adjustStock(id: string, dto: AdjustStockDto, userId: string) {
-    await this.getIngredientOrThrow(id);
+  async adjustStock(id: string, dto: AdjustStockDto, actor: AuthenticatedUser) {
+    await this.getIngredientOrThrow(id, actor);
     const [updated] = await this.tenantPrisma.client.$transaction([
       this.tenantPrisma.client.ingredient.update({
         where: { id },
@@ -99,7 +101,7 @@ export class InventoryService {
           type: dto.type ?? 'ADJUST',
           quantityDelta: dto.delta,
           reason: dto.reason?.trim() || null,
-          userId,
+          userId: actor.id,
         },
       }),
     ]);
@@ -108,8 +110,8 @@ export class InventoryService {
 
   /** Conteo físico: setea el stock al valor contado y registra el delta como
    *  un movimiento COUNT (auditoría del arqueo de inventario). */
-  async countStock(id: string, dto: CountStockDto, userId: string) {
-    const ing = await this.getIngredientOrThrow(id);
+  async countStock(id: string, dto: CountStockDto, actor: AuthenticatedUser) {
+    const ing = await this.getIngredientOrThrow(id, actor);
     const delta = dto.countedQty - Number(ing.stockQty);
     const [updated] = await this.tenantPrisma.client.$transaction([
       this.tenantPrisma.client.ingredient.update({
@@ -123,7 +125,7 @@ export class InventoryService {
           type: 'COUNT',
           quantityDelta: delta,
           reason: dto.reason?.trim() || 'Conteo físico',
-          userId,
+          userId: actor.id,
         },
       }),
     ]);
@@ -131,8 +133,8 @@ export class InventoryService {
   }
 
   /** Historial de movimientos de un insumo (más recientes primero). */
-  async listMovements(ingredientId: string) {
-    await this.getIngredientOrThrow(ingredientId);
+  async listMovements(ingredientId: string, actor: AuthenticatedUser) {
+    await this.getIngredientOrThrow(ingredientId, actor);
     return this.tenantPrisma.client.stockMovement.findMany({
       where: { ingredientId },
       orderBy: { createdAt: 'desc' },
@@ -141,8 +143,8 @@ export class InventoryService {
   }
 
   /** Borra el insumo si no participa en ninguna receta; si participa, 409. */
-  async removeIngredient(id: string) {
-    await this.getIngredientOrThrow(id);
+  async removeIngredient(id: string, actor: AuthenticatedUser) {
+    await this.getIngredientOrThrow(id, actor);
     const uses = await this.tenantPrisma.client.recipeComponent.count({ where: { ingredientId: id } });
     if (uses > 0) {
       throw new ConflictException(
@@ -356,9 +358,14 @@ export class InventoryService {
 
   // ----------------------------------------------------------------- helpers
 
-  private async getIngredientOrThrow(id: string) {
+  // Choke-point de los insumos por id: además del scope de tenant (que inyecta
+  // `tenantPrisma`), valida la SUCURSAL contra el actor. Sin esto, un admin/gerente
+  // atado a la sucursal A podía ajustar/contar/borrar/leer insumos de la B con sólo
+  // el UUID (corrompía stock y costeo ajenos). Mismo criterio que pos/tables.
+  private async getIngredientOrThrow(id: string, actor: AuthenticatedUser) {
     const ing = await this.tenantPrisma.client.ingredient.findFirst({ where: { id } });
     if (!ing) throw new NotFoundException('Insumo no encontrado');
+    assertPuedeUsarSucursal(actor, ing.branchId);
     return ing;
   }
 
