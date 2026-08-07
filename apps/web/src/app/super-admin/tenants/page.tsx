@@ -69,7 +69,8 @@ export default function TenantsPageView() {
         impersonating: { tenantName: string };
       }>(`/super-admin/tenants/${t.id}/impersonate`, { reason: 'Acceso rápido desde el panel' });
       startImpersonation(res, { tenantName: res.impersonating.tenantName });
-      router.push('/admin');
+      // Al home real del OWNER: `/admin` no tiene página índice → 404. (ROLE_HOME.OWNER)
+      router.push('/admin/dashboard');
       // No reseteamos `entering`: estamos navegando fuera de esta página.
     } catch (err) {
       setError((err as ApiError).message);

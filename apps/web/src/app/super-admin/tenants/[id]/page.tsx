@@ -197,7 +197,8 @@ export default function TenantDetailPage() {
       // Guarda la sesión del super-admin y entra como el tenant. No se hace
       // setSaving(false): estamos navegando fuera de esta página.
       startImpersonation(res, { tenantName: res.impersonating.tenantName });
-      router.push('/admin');
+      // `/admin` no tiene página índice (404); el home real del OWNER es el dashboard.
+      router.push('/admin/dashboard');
     } catch (err) {
       setError((err as ApiError).message);
       setSaving(false);
