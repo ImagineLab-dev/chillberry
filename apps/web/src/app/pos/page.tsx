@@ -172,9 +172,15 @@ export default function PosPage() {
   const [lines, setLines] = useState<PaymentLine[]>([{ method: 'CASH', amount: '' }]);
   const [chargeSplitId, setChargeSplitId] = useState('');
   const [tip, setTip] = useState('');
+  // Efectivo recibido del cliente (pago en efectivo) para calcular el VUELTO. Es
+  // sólo de la UI: NO se envía al API (que cobra el total exacto igual).
+  const [cashReceived, setCashReceived] = useState('');
   const [charging, setCharging] = useState(false);
   /** Cierre de caja en vuelo: evita el doble click sobre una acción sin vuelta atrás. */
   const [closing, setClosing] = useState(false);
+  // Confirmación de cierre en modal propio (reemplaza el window.confirm nativo,
+  // que rompía el lenguaje de la app en la acción más irreversible).
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   // Venta de mostrador ("Nueva venta"): arma un pedido SIN mesa acá mismo en la
   // caja y lo deja seleccionado para cobrarlo. Antes había que crearlo en
@@ -212,6 +218,7 @@ export default function PosPage() {
   // Focus-trap + scroll-lock de los dos modales (ver use-modal.ts).
   const movementModalRef = useModalBehavior(movementOpen);
   const newOrderModalRef = useModalBehavior(newOrderOpen);
+  const confirmCloseModalRef = useModalBehavior(confirmCloseOpen);
   // Espejo en ref del pedido seleccionado, para que los callbacks async
   // (búsqueda de puntos) puedan chequear contra el valor ACTUAL y no contra el
   // del render en que nacieron.
@@ -332,13 +339,13 @@ export default function PosPage() {
     }
   }
 
-  async function onCloseSession() {
+  // Valida el efectivo contado y ABRE el modal de confirmación. El cierre real lo
+  // hace confirmCloseSession — separado para no depender del window.confirm nativo
+  // en la acción más irreversible de la app.
+  function requestCloseSession() {
     if (!session || closing) return;
-
-    // Cerrar caja es la acción más irreversible de la app y era la que menos
-    // fricción tenía: con el campo vacío, `Number('') === 0` y el DTO lo acepta,
-    // así que se cerraba declarando CERO efectivo contado — el arqueo registraba
-    // un faltante igual a toda la caja, imputado al cajero.
+    // Con el campo vacío `Number('') === 0`: se cerraba declarando CERO contado y
+    // el arqueo imputaba un faltante igual a toda la caja. Se exige un número.
     const contado = countedCash.trim();
     if (contado === '') {
       setError('Escribí cuánto efectivo contaste antes de cerrar la caja.');
@@ -349,15 +356,14 @@ export default function PosPage() {
       setError('El efectivo contado tiene que ser un número válido.');
       return;
     }
-    if (
-      !window.confirm(
-        `Vas a cerrar la caja declarando ${formatMoney(monto, countryCode)} contados en el cajón.\n\n` +
-          'El arqueo queda registrado con la diferencia contra lo esperado y no se puede deshacer. ¿Cerramos?',
-      )
-    ) {
-      return;
-    }
+    setError(null);
+    setConfirmCloseOpen(true);
+  }
 
+  async function confirmCloseSession() {
+    if (!session || closing) return;
+    const monto = Number(countedCash.trim());
+    if (!Number.isFinite(monto) || monto < 0) return;
     setError(null);
     setClosing(true);
     try {
@@ -365,9 +371,10 @@ export default function PosPage() {
         countedCash: monto,
       });
       // La caja quedó cerrada → volvemos al estado sin sesión (permite abrir la
-      // próxima) y mostramos el resumen inline en vez de un alert() nativo.
+      // próxima) y mostramos el resumen inline.
       setSession(null);
       setCountedCash('');
+      setConfirmCloseOpen(false);
       setCloseSummary(s);
     } catch (err) {
       setError((err as ApiError).message);
@@ -459,6 +466,7 @@ export default function PosPage() {
     setChargeError(null);
     setChargeSplitId('');
     setTip('');
+    setCashReceived('');
     // Pedido nuevo = intento de cobro nuevo. Sin este reset, la clave de un
     // cobro que falló por red en el pedido ANTERIOR (pero que sí commiteó en el
     // server) convertía el cobro de ESTE pedido en un "replay" del anterior: el
@@ -795,6 +803,20 @@ export default function PosPage() {
   }
 
   const lineSum = lines.reduce((acc, l) => acc + (Number(l.amount) || 0), 0);
+  // Total final que paga el cliente (cuenta + propina). Cifra canónica: el resto
+  // de la pantalla no repite números, sólo muestra deltas cuando algo no cuadra.
+  const aCobrar = targetAmount() + (Number(tip) || 0);
+  // Delta de la suma de pagos vs la cuenta: se muestra SÓLO si no cuadra (en vez
+  // de repetir "Suma", que en el caso normal es el mismo número). Atrapa el
+  // desajuste ANTES de tocar Cobrar, sin el round-trip del 400 "no coincide".
+  const sumaDelta = Math.round(lineSum - targetAmount());
+  // Vuelto: sólo con pago todo en efectivo y "recibido" cargado. `cashReceived`
+  // es de la UI, no se envía; el API cobra el total exacto igual.
+  const todoEfectivoLineas = lines.length > 0 && lines.every((l) => l.method === 'CASH');
+  const vuelto =
+    todoEfectivoLineas && cashReceived.trim() !== '' && Number.isFinite(Number(cashReceived))
+      ? Number(cashReceived) - aCobrar
+      : null;
 
   const menuBusqueda = menuSearch.trim().toLowerCase();
   const menuFiltered = menuBusqueda
@@ -905,25 +927,41 @@ export default function PosPage() {
           </div>
         )}
         {session && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone="ok" dot>
-              Caja abierta — apertura <span className="tabular">{formatMoney(session.openingAmount, countryCode)}</span>
-            </Badge>
-            <button type="button" onClick={openMovementModal} className="btn btn-lg">
-              <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
-              Movimiento de caja
-            </button>
-            <input
-              type="number"
-              value={countedCash}
-              onChange={(e) => setCountedCash(e.target.value)}
-              placeholder="Efectivo contado"
-            aria-label="Efectivo contado en el cajón"
-              className="input tabular w-40"
-            />
-            <button onClick={onCloseSession} disabled={closing} className="btn btn-lg">
-              Cerrar caja
-            </button>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge tone="ok" dot>
+                Caja abierta — apertura{' '}
+                <span className="tabular">{formatMoney(session.openingAmount, countryCode)}</span>
+              </Badge>
+              <button type="button" onClick={openMovementModal} className="btn btn-lg">
+                <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+                Movimiento de caja
+              </button>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label htmlFor="counted-cash" className="label mb-1.5 block">
+                  Efectivo contado en el cajón
+                </label>
+                <input
+                  id="counted-cash"
+                  type="number"
+                  min={0}
+                  value={countedCash}
+                  onChange={(e) => setCountedCash(e.target.value)}
+                  placeholder="0"
+                  aria-describedby="counted-cash-hint"
+                  className="input tabular w-56"
+                />
+              </div>
+              <button onClick={requestCloseSession} disabled={closing} className="btn btn-lg">
+                Cerrar caja
+              </button>
+            </div>
+            <p id="counted-cash-hint" className="text-xs text-muted-foreground">
+              Contá todo el efectivo del cajón. Al cerrar se compara contra lo esperado (arqueo) y no se
+              puede deshacer.
+            </p>
           </div>
         )}
       </div>
@@ -980,8 +1018,11 @@ export default function PosPage() {
         <div>
           {selectedOrder && (
             <div className="panel p-4">
-              <h2 className="mb-2 font-heading font-medium">
-                {selectedOrder.table ? `Mesa ${selectedOrder.table.code}` : 'Takeaway'}
+              <h2 className="mb-2 flex items-center justify-between gap-2 font-heading font-medium">
+                <span>{selectedOrder.table ? `Mesa ${selectedOrder.table.code}` : 'Para llevar'}</span>
+                <span className="tabular text-sm text-muted-foreground">
+                  {formatMoney(selectedOrder.total, countryCode)}
+                </span>
               </h2>
               <ul className="mb-2 text-sm text-muted-foreground">
                 {selectedOrder.items.map((it) => (
@@ -1130,7 +1171,7 @@ export default function PosPage() {
               <div className="border-t border-border pt-3">
                 <p className="mb-2 flex items-center gap-2 font-heading text-sm font-medium">
                   <CreditCard className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  Cobrar <span className="tabular">{formatMoney(targetAmount(), countryCode)}</span>
+                  Cobrar
                 </p>
                 {lines.map((line, idx) => (
                   <div key={idx} className="mb-1 flex gap-2">
@@ -1185,9 +1226,17 @@ export default function PosPage() {
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     Pago mixto
                   </button>
-                  <span className="tabular text-xs text-muted-foreground">
-                    Suma: {formatMoney(lineSum, countryCode)}
-                  </span>
+                  {sumaDelta !== 0 && (
+                    <span
+                      className={`tabular text-xs font-medium ${
+                        sumaDelta < 0 ? 'text-error-foreground' : 'text-warn-foreground'
+                      }`}
+                    >
+                      {sumaDelta < 0
+                        ? `Falta ${formatMoney(-sumaDelta, countryCode)}`
+                        : `Sobra ${formatMoney(sumaDelta, countryCode)}`}
+                    </span>
+                  )}
                 </div>
 
                 {/* Propina: aparte del total, va al mozo. Antes el POS
@@ -1221,11 +1270,41 @@ export default function PosPage() {
                         Quitar
                       </button>
                     )}
-                    <span className="tabular ml-auto text-sm font-medium">
-                      A cobrar: {formatMoney(targetAmount() + (Number(tip) || 0), countryCode)}
+                    <span className="tabular ml-auto text-base font-semibold">
+                      A cobrar: {formatMoney(aCobrar, countryCode)}
                     </span>
                   </div>
                 </div>
+
+                {/* Vuelto: sólo con pago todo en efectivo. "Recibido" es de la UI
+                    (no se envía); el API cobra el total exacto igual. */}
+                {todoEfectivoLineas && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    <label className="label" htmlFor="pos-recibido">
+                      Efectivo recibido
+                    </label>
+                    <input
+                      id="pos-recibido"
+                      type="number"
+                      min={0}
+                      value={cashReceived}
+                      onChange={(e) => setCashReceived(e.target.value)}
+                      placeholder="0"
+                      className="input tabular w-32"
+                      aria-label="Efectivo recibido del cliente"
+                    />
+                    {vuelto !== null && vuelto >= 0 && (
+                      <span className="tabular ml-auto text-base font-semibold text-ok-foreground">
+                        Vuelto: {formatMoney(vuelto, countryCode)}
+                      </span>
+                    )}
+                    {vuelto !== null && vuelto < 0 && (
+                      <span className="tabular ml-auto text-sm font-medium text-warn-foreground">
+                        Falta: {formatMoney(-vuelto, countryCode)}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* La causa #1 de "toco Cobrar y no pasa nada" del primer uso
                     real: cobrar efectivo sin caja abierta daba 409 con el error
@@ -1251,7 +1330,7 @@ export default function PosPage() {
                   disabled={charging || (lines.some((l) => l.method === 'CASH') && !session)}
                   className="btn btn-primary btn-lg mt-3 w-full font-semibold"
                 >
-                  {charging ? 'Cobrando...' : 'Cobrar'}
+                  {charging ? 'Cobrando…' : `Cobrar ${formatMoney(aCobrar, countryCode)}`}
                 </button>
               </div>
 
@@ -1604,7 +1683,7 @@ export default function PosPage() {
                           key={m.id}
                           type="button"
                           onClick={() => addToNewCart(m)}
-                          className="card card-interactive flex min-h-[64px] flex-col justify-between p-2.5 text-left"
+                          className="card card-dense card-interactive flex min-h-[64px] flex-col justify-between p-2.5 text-left"
                         >
                           <span className="text-sm font-medium leading-tight">{m.name}</span>
                           <span className="mt-1 flex items-center justify-between gap-1">
@@ -1614,7 +1693,7 @@ export default function PosPage() {
                             {/* Aviso de que el toque abre la elección de extras
                                 en vez de sumar directo. */}
                             {m.modifierGroups.length > 0 && (
-                              <span className="text-[10px] font-medium uppercase tracking-wide text-primary">
+                              <span className="text-xs font-medium uppercase tracking-wide text-primary">
                                 extras
                               </span>
                             )}
@@ -1710,6 +1789,58 @@ export default function PosPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* Confirmar cierre de caja — modal propio (no window.confirm). Es la acción
+          más irreversible: el arqueo se registra con la diferencia y no se deshace. */}
+      {confirmCloseOpen && session && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          onClick={() => !closing && setConfirmCloseOpen(false)}
+          role="presentation"
+        >
+          <div
+            ref={confirmCloseModalRef}
+            className="panel w-full max-w-md animate-slide-up rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirmar cierre de caja"
+          >
+            <h2 className="mb-1 font-heading text-xl font-semibold text-foreground">¿Cerrar la caja?</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              El arqueo queda registrado con la diferencia contra lo esperado y{' '}
+              <b>no se puede deshacer</b>.
+            </p>
+            <dl className="mb-4 space-y-1.5 rounded-lg bg-muted p-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Apertura</dt>
+                <dd className="tabular">{formatMoney(session.openingAmount, countryCode)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Efectivo contado</dt>
+                <dd className="tabular font-semibold">{formatMoney(Number(countedCash) || 0, countryCode)}</dd>
+              </div>
+            </dl>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCloseOpen(false)}
+                disabled={closing}
+                className="btn btn-lg flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmCloseSession}
+                disabled={closing}
+                className="btn btn-danger btn-lg flex-1 font-semibold"
+              >
+                {closing ? 'Cerrando…' : 'Sí, cerrar caja'}
+              </button>
+            </div>
           </div>
         </div>
       )}
