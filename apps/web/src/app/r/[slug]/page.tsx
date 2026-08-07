@@ -262,8 +262,10 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   // Scroll-spy de los chips de categoría. Va acá arriba (antes de los early-returns)
   // por las reglas de hooks, y consulta el DOM — así corre recién cuando las
   // secciones existen (rama carta). Se re-observa si cambia el menú o la búsqueda
-  // (que reordena/filtra las secciones). La sección "activa" es la más arriba que
-  // cruza la zona superior del viewport.
+  // (que reordena/filtra las secciones) o si se abre la carta desde el hub
+  // (`cartaOpened`: recién ahí se montan las <section>, y sin esta dep el observer
+  // nunca se ataría en ese flujo). La sección "activa" es la más arriba que cruza
+  // la zona superior del viewport.
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return;
     const secciones = Array.from(document.querySelectorAll<HTMLElement>('section[id^="cat-"]'));
@@ -279,7 +281,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     );
     secciones.forEach((s) => obs.observe(s));
     return () => obs.disconnect();
-  }, [menu, menuSearch]);
+  }, [menu, menuSearch, cartaOpened]);
   // Cupón de descuento que tipea el cliente (lo valida el server al confirmar).
   const [couponCode, setCouponCode] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
@@ -1533,12 +1535,16 @@ function CustomizeSheet({
     .reduce((sum, o) => sum + Number(o.priceDelta), 0);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+    <div
+      className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+      onClick={onCancel}
+    >
       <div
         className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
         role="dialog"
         aria-modal="true"
         aria-label={`Opciones de ${item.name}`}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-heading text-xl font-semibold text-foreground">{item.name}</h2>
         <p className="tabular mt-0.5 text-sm text-muted-foreground">{formatMoney(basePrice, countryCode)}</p>
