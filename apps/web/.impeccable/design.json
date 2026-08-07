@@ -66,7 +66,7 @@
     "typographyMeta": {
       "display": { "displayName": "Display", "purpose": "Hanken Grotesk 700, tracking -0.03em. Sólo h1-h4." },
       "body": { "displayName": "Body", "purpose": "Plus Jakarta Sans. Texto, botones, labels." },
-      "mono": { "displayName": "Mono / Números", "purpose": "JetBrains Mono tabular. Precios, métricas, timers, IDs." }
+      "mono": { "displayName": "Datos numéricos (mono)", "purpose": "JetBrains Mono + tabular-nums para datos (precios en listas, contadores, timers, IDs); las cifras hero grandes usan la display Hanken. Clase .tabular; .tabular font-heading para hero." }
     },
     "shadows": [
       { "name": "clay", "value": "0 1px 1px hsl(250 40% 40% / 0.04), 0 8px 16px -6px hsl(250 40% 40% / 0.14), 0 22px 44px -12px hsl(250 40% 40% / 0.18), inset 0 2px 1px -1px hsl(0 0% 100% / 0.9)", "purpose": "Escala generosa: la superficie inflada de .panel y .card." },
@@ -140,22 +140,22 @@
     "keyCharacteristics": [
       "Material de arcilla: superficies infladas (sombra + highlight), campos hundidos (inset).",
       "Violeta de marca disciplinado sobre lavanda-blanco (claro) o tinta violeta (oscuro).",
-      "Números en mono tabular (JetBrains Mono) — precios, métricas, timers, IDs.",
+      "Números siempre tabular-nums; la cara cambia por tamaño: mono JetBrains para datos, display Hanken para cifras hero grandes.",
       "Contraste medido, no estimado; legibilidad como invariante.",
       "Dos densidades (generosa / contenida), doble tema con alphas de sombra distintos."
     ],
     "rules": [
       { "name": "La Regla del Acento Único", "body": "El violeta es acento y momento hero, jamás fondo general.", "section": "colors" },
       { "name": "La Regla de Medir, no Estimar", "body": "Ningún par texto/fondo se elige a ojo; build/typecheck/lint son ciegos al contraste. Medir el color compuesto contra WCAG AA es la única red.", "section": "colors" },
-      { "name": "La Regla de las Tres Voces", "body": "Hanken en titulares, Plus Jakarta en cuerpo, JetBrains Mono en números — cada una en su lugar. Los botones usan la body, no la display.", "section": "typography" },
-      { "name": "La Regla del Número Tabular", "body": "Toda cifra significativa va en mono con tabular-nums.", "section": "typography" },
+      { "name": "La Regla de las Tres Voces", "body": "Hanken en titulares, Plus Jakarta en cuerpo, JetBrains Mono en los datos numéricos — cada una en su lugar. Excepción por tamaño: las cifras hero grandes van en Hanken. Los botones usan la body, no la display.", "section": "typography" },
+      { "name": "La Regla del Número Tabular", "body": "El invariante es tabular-nums en toda cifra significativa. La cara depende del tamaño: mono JetBrains para datos (.tabular), display Hanken para cifras hero grandes (.tabular font-heading).", "section": "typography" },
       { "name": "La Regla de la Sombra Cálida", "body": "Las sombras van tintadas de violeta, nunca gris neutro.", "section": "elevation" },
       { "name": "La Regla del Par", "body": "Radio y sombra van en pareja: si cambiás un radio de escala, cambiá su sombra.", "section": "elevation" }
     ],
     "dos": [
       "Do medir cada par texto/fondo contra WCAG AA en su peor caso antes de commitear un color.",
       "Do elegir una de las dos densidades para cada superficie nueva (generosa default / contenida opt-in).",
-      "Do poner toda cifra en mono tabular.",
+      "Do dar tabular-nums a toda cifra: .tabular (mono) para datos, .tabular font-heading (display) para cifras hero grandes.",
       "Do mantener el par radio-sombra (clay / clay-sm).",
       "Do usar el degradé de marca sólo en momentos hero, como estructura.",
       "Do dar foco visible con :focus-visible y mínimo táctil 44px en botones de ícono.",

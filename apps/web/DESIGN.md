@@ -94,7 +94,7 @@ components:
 
 **Creative North Star: "Arcilla Violeta"**
 
-Cada superficie de Chillberry se siente **modelada**, no dibujada. Las tarjetas casi blancas se **inflan** sobre un fondo lavanda con una sombra tibia y difusa tintada de violeta; los campos de formulario se **hunden** como una huella (sombra interior). El borde es casi invisible a propósito — la profundidad la da la sombra, nunca un contorno duro. Es claymorphism, pero con un violeta de marca saturado (`#5533DB`) que aparece con disciplina, y con números en tipografía monoespaciada que le dan un aire premium/fintech. Cálido y táctil por el material; serio y confiable por el rigor.
+Cada superficie de Chillberry se siente **modelada**, no dibujada. Las tarjetas casi blancas se **inflan** sobre un fondo lavanda con una sombra tibia y difusa tintada de violeta; los campos de formulario se **hunden** como una huella (sombra interior). El borde es casi invisible a propósito — la profundidad la da la sombra, nunca un contorno duro. Es claymorphism, pero con un violeta de marca saturado (`#5533DB`) que aparece con disciplina, y con números tabulares —mono para los datos, la cara display para las cifras hero grandes— que le dan un aire premium/fintech. Cálido y táctil por el material; serio y confiable por el rigor.
 
 Ese rigor no es decorativo: **cada par texto/fondo está medido contra WCAG AA (4.5:1), no estimado** — y medido en su peor caso (el color compuesto sobre el fondo más oscuro de los dos posibles). El sistema vive en pantallas reales y duras: un KDS que se lee a dos metros en una cocina, una caja que se toca con dedos grasosos en hora pico, y una carta pública que ve el cliente en su celular. Por eso tiene **dos densidades del mismo material** — generosa donde hay aire, contenida donde el contenido aprieta — y nunca una tercera.
 
@@ -103,7 +103,7 @@ Anti-referencia: nada de bordes duros como fuente de estructura, nada de gris ne
 **Key Characteristics:**
 - Material de arcilla: superficies infladas (sombra + highlight superior), campos hundidos (sombra inset).
 - Violeta de marca disciplinado sobre lavanda-blanco (claro) o tinta violeta (oscuro).
-- Números en mono tabular (JetBrains Mono) — precios, métricas, timers, IDs.
+- Números siempre `tabular-nums`; la cara cambia por tamaño: mono JetBrains para datos (precios en listas, contadores, timers, IDs), display Hanken para las cifras hero grandes (métricas de StatCard, totales destacados).
 - Contraste medido, no estimado; legibilidad como invariante, no como sugerencia.
 - Dos densidades (generosa / contenida), doble tema (claro / oscuro) con alphas de sombra distintos.
 
@@ -141,20 +141,21 @@ Nombres por lo que **significan**, no por a qué se parecen. Cada color tiene un
 
 **Display Font:** Hanken Grotesk (con `system-ui`, sans-serif)
 **Body Font:** Plus Jakarta Sans (con `system-ui`, sans-serif)
-**Number/Mono Font:** JetBrains Mono (con `ui-monospace`, monospace)
+**Number Font (datos):** JetBrains Mono (con `ui-monospace`, monospace) — las cifras hero grandes usan la display (Hanken); ver la Regla del Número Tabular.
 
-**Character:** Una grotesca de titulares apretada y con carácter (Hanken, 700, tracking negativo) contra un cuerpo humanista y cómodo (Plus Jakarta) — "editorial-tech". Los números viven aparte, en mono tabular: es el detalle que le da el aire fintech y hace que precios y métricas se alineen en columna.
+**Character:** Una grotesca de titulares apretada y con carácter (Hanken, 700, tracking negativo) contra un cuerpo humanista y cómodo (Plus Jakarta) — "editorial-tech". Los datos numéricos viven aparte, en mono tabular: es el detalle que le da el aire fintech y hace que precios y métricas se alineen en columna. Las cifras hero grandes son la excepción por tamaño: van en la display (Hanken), donde la mono se vería frágil.
 
 ### Hierarchy
 - **Display / Headings** (Hanken Grotesk 700, `letter-spacing: -0.03em`, `line-height` ~1.1): `h1`–`h4`. Apretado y pesado; el carácter editorial del sistema.
 - **Body** (Plus Jakarta Sans 400/500, `line-height` 1.5): texto general y etiquetas de formulario (500). Máximo cómodo de lectura 65–75ch.
 - **Label** (Plus Jakarta Sans 600, `0.75rem`): badges y micro-etiquetas.
-- **Mono / Números** (JetBrains Mono 500/700, `tabular-nums`, `letter-spacing: -0.01em`): precios, métricas, timers, IDs — todo lo que sea una cifra que se lea o se compare. Clase `.tabular`.
+- **Datos numéricos** (JetBrains Mono 500/700, `tabular-nums`, `letter-spacing: -0.01em`): precios en listas/tablas, contadores, timers, IDs, slugs — la cifra como dato que se lee o compara. Clase `.tabular` sola.
+- **Cifras hero** (Hanken + `tabular-nums`): los números grandes de StatCards, totales destacados y precios a tamaño display. Clase `.tabular font-heading` — la utility `font-heading` gana la familia y `.tabular` sólo aporta el `tabular-nums`. A tamaño grande la display lee mejor y no compite con la mono.
 
 ### Named Rules
-**La Regla de las Tres Voces.** Hanken en titulares, Plus Jakarta en cuerpo, JetBrains Mono en números — y cada una en su lugar. Los botones usan la **body**, no la display: Hanken en cada botón se lee como dos fuentes compitiendo.
+**La Regla de las Tres Voces.** Hanken en titulares, Plus Jakarta en cuerpo, JetBrains Mono en los datos numéricos — y cada una en su lugar. (Excepción por tamaño: las cifras hero grandes van en Hanken; ver la Regla del Número Tabular.) Los botones usan la **body**, no la display: Hanken en cada botón se lee como dos fuentes compitiendo.
 
-**La Regla del Número Tabular.** Toda cifra significativa (dinero, cantidades, tiempos) va en mono con `tabular-nums`. Alinea columnas y separa el "dato" del "texto".
+**La Regla del Número Tabular.** El invariante es `tabular-nums` en toda cifra significativa (dinero, cantidades, tiempos) — alinea columnas y separa el "dato" del "texto". La **cara** depende del tamaño: mono JetBrains para los datos (`.tabular`), display Hanken para las cifras hero grandes (`.tabular font-heading`). Lo que nunca cambia es el `tabular-nums`.
 
 ## Layout
 
@@ -224,7 +225,7 @@ El componente firma no es un widget sino el **material**: cualquier contenedor d
 ### Do:
 - **Do** medir cada par texto/fondo contra WCAG AA (4.5:1) en su peor caso antes de commitear un color; usá el script de `globals.css`.
 - **Do** elegir una de las dos densidades para cada superficie nueva: generosa (`.panel`/`.card`, default) o contenida (`.card-dense`, opt-in en KDS/POS/tablas).
-- **Do** poner toda cifra (dinero, cantidades, tiempos) en mono tabular (`.tabular` / `font-mono`).
+- **Do** dar `tabular-nums` a toda cifra (dinero, cantidades, tiempos): `.tabular` (mono) para datos, `.tabular font-heading` (display) para las cifras hero grandes.
 - **Do** mantener el par radio↔sombra (`clay`/`clay-sm`) — si tocás uno, tocá el otro.
 - **Do** usar el degradé de marca (violeta→magenta) sólo en momentos hero (login, portada de carta), como estructura, no decoración.
 - **Do** dar foco visible con `:focus-visible` (ring violeta), y mínimo táctil 44px en botones de ícono.
