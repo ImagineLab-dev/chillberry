@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Building2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Building2, ChevronLeft, ChevronRight, LogIn, Search } from 'lucide-react';
 import { api, type ApiError } from '@/lib/api-client';
+import { startImpersonation } from '@/lib/impersonation';
 import { Alert, Badge, EmptyState, PageHeader, Skeleton } from '@/components/ui';
 import {
   STATUS_LABEL,
@@ -47,9 +49,33 @@ export default function TenantsPageView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | SubscriptionStatus>('');
   const [page, setPage] = useState(1);
+  // "Entrar" = impersonar ese restaurante (ver/operar su admin como su dueño) y
+  // volver con el banner. Se queda en el MISMO origen (router.push soft) para que
+  // el banner y la vuelta funcionen — su estado vive en localStorage, por-origen.
+  const [entering, setEntering] = useState<string | null>(null);
+
+  async function onEnter(t: TenantListItem) {
+    setError(null);
+    setEntering(t.id);
+    try {
+      const res = await api.post<{
+        accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        impersonating: { tenantName: string };
+      }>(`/super-admin/tenants/${t.id}/impersonate`, { reason: 'Acceso rápido desde el panel' });
+      startImpersonation(res, { tenantName: res.impersonating.tenantName });
+      router.push('/admin');
+      // No reseteamos `entering`: estamos navegando fuera de esta página.
+    } catch (err) {
+      setError((err as ApiError).message);
+      setEntering(null);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,9 +218,21 @@ export default function TenantsPageView() {
                     <td className="px-4 py-3 text-right tabular">{t.usage.orders}</td>
                     <td className="px-4 py-3 text-muted-foreground tabular">{formatDate(t.createdAt)}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/super-admin/tenants/${t.id}`} className="btn btn-sm">
-                        Ver
-                      </Link>
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onEnter(t)}
+                          disabled={entering !== null}
+                          className="btn btn-sm btn-primary"
+                          title={`Entrar al admin de ${t.name} como su dueño (impersonar)`}
+                        >
+                          <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+                          {entering === t.id ? 'Entrando…' : 'Entrar'}
+                        </button>
+                        <Link href={`/super-admin/tenants/${t.id}`} className="btn btn-sm">
+                          Ver
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -243,9 +281,20 @@ export default function TenantsPageView() {
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">Alta: {formatDate(t.createdAt)}</span>
-                  <Link href={`/super-admin/tenants/${t.id}`} className="btn btn-sm">
-                    Ver detalle
-                  </Link>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onEnter(t)}
+                      disabled={entering !== null}
+                      className="btn btn-sm btn-primary"
+                    >
+                      <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+                      {entering === t.id ? 'Entrando…' : 'Entrar'}
+                    </button>
+                    <Link href={`/super-admin/tenants/${t.id}`} className="btn btn-sm">
+                      Ver
+                    </Link>
+                  </div>
                 </div>
               </li>
             ))}
