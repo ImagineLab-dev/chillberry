@@ -73,8 +73,11 @@ export default function LiveMap({
         existing.setLatLng([p.lat, p.lng]);
         existing.setTooltipContent(p.label);
       } else {
-        const color =
-          p.kind === 'branch' ? '#71717a' : p.kind === 'destino' ? '#3FBF87' : 'var(--primary, #5533DB)';
+        // Violeta de marca LITERAL (#5533DB), no `var(--primary)`: acá el color va
+        // a un atributo inline del divIcon, y `--primary` son canales HSL crudos
+        // ("252 70% 53%", para `hsl(var(--primary))`), así que como color directo
+        // resuelve a algo inválido → el punto del repartidor quedaba transparente.
+        const color = p.kind === 'branch' ? '#71717a' : p.kind === 'destino' ? '#3FBF87' : '#5533DB';
         const icon = L.divIcon({
           className: '',
           html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>`,
@@ -99,7 +102,10 @@ export default function LiveMap({
         routeRef.current.setLatLngs(route);
       } else {
         routeRef.current = L.polyline(route, {
-          color: 'var(--primary, #5533DB)',
+          // Hex literal: Leaflet lo pone como atributo `stroke` del <path>, y un
+          // `var()` en un ATRIBUTO de presentación SVG no resuelve → stroke:none →
+          // la ruta no se dibujaba (aunque el API la calcula y está en el DOM).
+          color: '#5533DB',
           weight: 5,
           opacity: 0.75,
           // Redondeado: en los giros cerrados una unión en punta deja un pico
