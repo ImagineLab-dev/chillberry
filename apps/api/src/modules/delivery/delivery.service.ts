@@ -653,7 +653,10 @@ export class DeliveryService {
       // preparando", "ya está listo") — no un eterno "buscando repartidor".
       include: {
         driver: { include: { user: { select: { name: true } } } },
-        order: { select: { status: true } },
+        // El nombre y teléfono del restó viajan al tracking: para firmar la página
+        // con la marca (confianza del comensal) y para dar una vía de contacto real
+        // cuando el pedido se cancela o falla (hoy queda sin salida).
+        order: { select: { status: true, branch: { select: { name: true, phone: true } } } },
       },
     });
     if (!delivery) throw new NotFoundException('Delivery no encontrado');
@@ -681,6 +684,9 @@ export class DeliveryService {
     return {
       status: delivery.status,
       orderStatus: delivery.order.status,
+      // Marca del restó (siempre) + contacto (para los estados terminales-negativos).
+      restaurantName: delivery.order.branch?.name ?? null,
+      restaurantPhone: delivery.order.branch?.phone ?? null,
       estimatedMinutes: delivery.estimatedMinutes,
       driverName: trackable ? (delivery.driver?.user.name ?? null) : null,
       location: trackable ? liveLocation : null,

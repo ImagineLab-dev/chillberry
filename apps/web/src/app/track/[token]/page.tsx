@@ -4,7 +4,7 @@ import { ActivarAvisos } from '@/components/activar-avisos';
 import { use, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { io } from 'socket.io-client';
-import { Bike, CheckCircle2, MapPin, Package, Star, XCircle } from 'lucide-react';
+import { Bike, CheckCircle2, MapPin, Package, Phone, Star, XCircle } from 'lucide-react';
 import { Alert, Skeleton, type Tone } from '@/components/ui';
 
 // Mapa embebido: Leaflet necesita `window`, así que se carga solo en el cliente.
@@ -16,6 +16,9 @@ type Tracking = {
    *  "buscando repartidor". */
   orderStatus?: string;
   status: string;
+  /** Marca del restó (firma la página) + contacto (vía de salida en cancelado/fallido). */
+  restaurantName?: string | null;
+  restaurantPhone?: string | null;
   estimatedMinutes: number | null;
   driverName: string | null;
   location: { lat: number; lng: number } | null;
@@ -156,11 +159,21 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
 
   const StatusIcon = tracking ? (STATUS_ICON[tracking.status] ?? Package) : Package;
   const tone: Tone = tracking ? (STATUS_TONE[tracking.status] ?? 'neutral') : 'neutral';
+  // Estados terminal-negativos: el pedido no llega. No hay avisos ni mapa que
+  // mostrar; el comensal necesita una vía de contacto, no seguir "esperando".
+  const isTerminalNegative = tracking
+    ? ['DRIVER_CANCELLED', 'CUSTOMER_CANCELLED', 'RESTAURANT_CANCELLED', 'FAILED'].includes(tracking.status)
+    : false;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="panel w-full max-w-sm p-6 text-center">
-        <h1 className="mb-6 font-heading text-xl font-semibold text-foreground">Seguimiento de tu pedido</h1>
+        <h1 className="font-heading text-xl font-semibold text-foreground">Seguimiento de tu pedido</h1>
+        {/* Firma de marca: el comensal ve de QUÉ restaurante es (confianza/legitimidad).
+            Nbsp cuando aún no cargó, para no saltar el layout. */}
+        <p className="mb-6 mt-1 text-sm text-muted-foreground">
+          {tracking?.restaurantName ? `de ${tracking.restaurantName}` : ' '}
+        </p>
 
         {error && (
           <Alert tone="error" className="text-left">
@@ -233,18 +246,36 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
               )
             )}
 
-            {/* Avisos al teléfono: es lo que reemplaza al WhatsApp. Sin esto,
-                quien cierra la pestaña no se entera de nada hasta volver. */}
-            <div className="mt-4">
-              <ActivarAvisos
-                ruta={`push/suscribir/seguimiento/${token}`}
-                texto={
-                  tracking.status === 'PICKED_UP' || tracking.status === 'ACCEPTED'
-                    ? 'Avisame cuando llegue'
-                    : undefined
-                }
-              />
-            </div>
+            {isTerminalNegative ? (
+              /* Cancelado/fallido: vía de contacto real con el restó (antes quedaba
+                 sin salida — X roja y nada más). */
+              <div className="mt-4 rounded-lg bg-muted p-4 text-left">
+                <p className="text-sm text-muted-foreground">¿Pasó algo con tu pedido? Escribile al restaurante:</p>
+                {tracking.restaurantPhone ? (
+                  <a href={`tel:${tracking.restaurantPhone}`} className="btn btn-primary mt-3 w-full">
+                    <Phone className="h-4 w-4" />
+                    Llamar{tracking.restaurantName ? ` a ${tracking.restaurantName}` : ' al restaurante'}
+                  </a>
+                ) : (
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    Contactá al restaurante donde hiciste el pedido.
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* Avisos al teléfono: reemplaza al WhatsApp. Sin esto, quien cierra la
+                 pestaña no se entera de nada hasta volver. */
+              <div className="mt-4">
+                <ActivarAvisos
+                  ruta={`push/suscribir/seguimiento/${token}`}
+                  texto={
+                    tracking.status === 'PICKED_UP' || tracking.status === 'ACCEPTED'
+                      ? 'Avisame cuando llegue'
+                      : undefined
+                  }
+                />
+              </div>
+            )}
 
             {tracking.driverName && (
               <p className="mt-1 text-base text-muted-foreground">
