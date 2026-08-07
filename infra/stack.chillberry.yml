@@ -69,7 +69,14 @@ services:
   # Sólo en la red interna: no se expone a internet ni a los otros proyectos
   # del servidor.
   osrm:
-    image: ghcr.io/project-osrm/osrm-backend
+    # PINNEADO AL DIGEST a propósito: `:latest` driftea y rompe. Los datos
+    # pre-procesados (/opt/osrm/data, generados por /opt/osrm/procesar.sh) son
+    # ESPECÍFICOS de la versión del binario — un `:latest` que salta de versión
+    # (pasó: 26.7.3 -> 26.8.0) deja "File is incompatible with this version of
+    # OSRM" y el servicio entra en crash-loop, matando el ruteo del tracking.
+    # Si actualizás la imagen: cambiá este digest Y regenerá los datos con la
+    # MISMA imagen (procesar.sh), en ese orden.
+    image: ghcr.io/project-osrm/osrm-backend@sha256:3ac496ff8fd7e1af53846179d73d06a97f719c8ad2217d008ed868942398665c
     command: ["osrm-routed", "--algorithm", "mld", "/data/paraguay-latest.osrm"]
     volumes:
       - type: bind
