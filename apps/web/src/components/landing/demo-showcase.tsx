@@ -75,7 +75,15 @@ function useAutoStep(count: number, resetKey: string, onFinish: () => void) {
   // mano con los puntos.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(false);
+    // Menos movimiento pedido, O pantalla chica (móvil): no reproducir solos. En
+    // móvil el auto-avance + auto-cambio de rol pelea contra el scroll vertical
+    // del pulgar; el visitante navega a mano con los puntos y las pestañas.
+    if (
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      window.matchMedia('(max-width: 640px)').matches
+    ) {
+      setPlaying(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -856,7 +864,7 @@ export function DemoShowcase() {
               onClick={() => goTo(i)}
               aria-label={`Paso ${i + 1}: ${label}`}
               aria-current={i === step}
-              className="flex h-11 w-6 items-center justify-center"
+              className="flex h-11 w-8 items-center justify-center"
             >
               <span
                 className={`block h-2 rounded-full transition-all ${

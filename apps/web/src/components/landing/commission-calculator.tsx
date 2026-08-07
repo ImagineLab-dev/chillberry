@@ -67,7 +67,7 @@ export function CommissionCalculator({ planMonthlyUsd }: { planMonthlyUsd: numbe
             value={rate}
             onChange={(e) => setRate(Number(e.target.value))}
             aria-label="Porcentaje de comisión"
-            className="w-full accent-primary"
+            className="h-11 w-full cursor-pointer accent-primary"
           />
         </fieldset>
       </div>

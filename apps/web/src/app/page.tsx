@@ -11,7 +11,6 @@ import {
   QrCode,
   ShieldCheck,
   Smartphone,
-  Star,
   UtensilsCrossed,
   Wallet,
   X,
@@ -259,14 +258,16 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-14 text-center sm:pt-20">
         <span className="badge badge-primary mb-5">Para restaurantes, cafés y food trucks</span>
         <h1 className="mx-auto max-w-3xl text-balance font-heading text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
-          {/* `block` para que la frase destacada arranque siempre en su propia
-              línea. Si se deja fluir, el quiebre cae donde entre y el "en"
-              queda huérfano al final del primer renglón. */}
-          Todo tu restaurante <span className="block text-primary">en una sola pantalla</span>
+          {/* El énfasis (violeta, en su propia línea) va sobre la CUÑA —"sin
+              comisión por venta"—, no sobre "en una pantalla": la consolidación
+              la promete cualquier POS; lo único que Rappi/PedidosYa NO pueden
+              decir es lo que frena el scroll de un dueño harto de comisiones. */}
+          Todo tu restaurante en una pantalla,{' '}
+          <span className="block text-primary">sin comisión por venta</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-          Pedidos, cocina, caja, delivery y carta con QR trabajando juntos. Sin papeles, sin planillas y sin pagar
-          comisión por cada venta.
+          Pedidos, cocina, caja, delivery y carta con QR, todo junto. Y cada venta queda 100% tuya: no cobramos
+          comisión, ni una sola vez.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link href="/register" className="btn btn-primary btn-lg min-h-[44px]">
@@ -278,7 +279,7 @@ export default function LandingPage() {
           </a>
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
-          Sin tarjeta de crédito · Funciona en cualquier teléfono, tablet o computadora
+          14 días gratis, sin tarjeta · después desde $29 USD/mes · cancelás cuando quieras
         </p>
 
         <ul className="mx-auto mt-8 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
@@ -377,6 +378,15 @@ export default function LandingPage() {
           </p>
         </div>
         <CommissionCalculator planMonthlyUsd={PLANS.find((p) => p.highlighted)?.price ?? PLANS[0]!.price} />
+        {/* CTA pegado al pico emocional: tras ver la plata que se va en comisiones,
+            el impulso tiene que tener adónde ir (antes disparaba al vacío). */}
+        <div className="mt-8 text-center">
+          <p className="mb-3 text-base font-medium text-foreground">Esa plata puede quedarse en tu caja.</p>
+          <Link href="/register" className="btn btn-primary btn-lg min-h-[44px]">
+            Crear cuenta gratis
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </section>
 
       {/* --------------------------------------------------------- pasos */}
@@ -411,6 +421,9 @@ export default function LandingPage() {
           <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Precios claros, sin comisión por venta</h2>
           <p className="mt-3 text-base text-muted-foreground">
             Todos los planes incluyen el producto completo. Lo único que cambia es cuántas sucursales y usuarios.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            14 días de prueba gratis, sin tarjeta · precios en dólares (USD) · cancelás cuando quieras
           </p>
         </div>
 
@@ -484,7 +497,7 @@ export default function LandingPage() {
       {/* ----------------------------------------------------- cta final */}
       <section className="border-t border-border">
         <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-          <Star className="mx-auto mb-4 h-8 w-8 text-primary" />
+          <QrCode className="mx-auto mb-4 h-8 w-8 text-primary" />
           <h2 className="text-balance font-heading text-3xl font-bold tracking-tight">Probalo con tu propia carta</h2>
           <p className="mt-3 text-base text-muted-foreground">
             Creá tu cuenta, cargá tus productos y en una tarde tenés el QR de tus mesas funcionando.
@@ -505,11 +518,11 @@ export default function LandingPage() {
             <span className="font-heading font-semibold text-foreground">Chillberry</span>
             <span>· Software para restaurantes</span>
           </span>
-          <span className="flex items-center gap-4">
-            <Link href="/login" className="hover:text-foreground">
+          <span className="flex items-center gap-2">
+            <Link href="/login" className="inline-flex min-h-[44px] items-center px-2 hover:text-foreground">
               Iniciar sesión
             </Link>
-            <a href="#precios" className="hover:text-foreground">
+            <a href="#precios" className="inline-flex min-h-[44px] items-center px-2 hover:text-foreground">
               Precios
             </a>
           </span>
