@@ -296,10 +296,11 @@ export default function PosPage() {
       }
       if (newOrderOpen && !creatingOrder) setNewOrderOpen(false);
       if (movementOpen && !movementSubmitting) setMovementOpen(false);
+      if (confirmCloseOpen && !closing) setConfirmCloseOpen(false);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pickingItem, newOrderOpen, creatingOrder, movementOpen, movementSubmitting]);
+  }, [pickingItem, newOrderOpen, creatingOrder, movementOpen, movementSubmitting, confirmCloseOpen, closing]);
 
   // Aviso EN VIVO a la CAJA: cuando una mesa pide la cuenta, el cajero recibe
   // sonido + pop-up y se refresca la lista de pendientes (así ve el pedido con
