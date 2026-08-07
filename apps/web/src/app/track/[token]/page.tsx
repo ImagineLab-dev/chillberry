@@ -238,6 +238,9 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
                 </p>
               </div>
             ) : (
+              // En cancelado/fallido NO se muestra ETA: el pedido no llega, un
+              // "Tiempo estimado ~45 min" ahí confunde (¿sigue viniendo?).
+              !isTerminalNegative &&
               tracking.estimatedMinutes != null && (
                 <p className="mt-3 text-base text-muted-foreground">
                   Tiempo estimado:{' '}
