@@ -304,11 +304,14 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* Neutral, no warn: un delivery en curso es operación normal, no una
+                advertencia — mismo criterio que mesas/reservas. El subconjunto
+                accionable (sin repartidor) ya sale en la alerta de arriba. */}
             <StatCard
               label="Deliveries pendientes"
               value={formatNumber(summary.pendingDeliveries)}
               icon={Bike}
-              tone={summary.pendingDeliveries > 0 ? 'warn' : 'ok'}
+              tone="neutral"
             />
           </div>
 
@@ -401,7 +404,7 @@ export default function DashboardPage() {
 
       <div className="flex flex-wrap gap-3">
         {QUICK_ACTIONS.map((action) => (
-          <Link key={action.href} href={action.href} className="btn">
+          <Link key={action.href} href={action.href} className="btn min-h-11">
             <action.icon className="h-4 w-4" />
             {action.label}
           </Link>

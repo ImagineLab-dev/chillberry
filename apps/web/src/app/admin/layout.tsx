@@ -195,7 +195,7 @@ function SidebarBody({
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`} role="group" aria-label={group.title}>
             {group.title && (
-              <p className="mb-0.5 px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60 md:pt-0.5">
+              <p className="mb-0.5 px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground md:pt-0.5">
                 {group.title}
               </p>
             )}
