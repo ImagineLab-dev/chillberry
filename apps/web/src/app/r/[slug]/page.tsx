@@ -257,6 +257,29 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
   const [cartaOpened, setCartaOpened] = useState(false);
   // Búsqueda de la carta (filtra productos por nombre/descripción).
   const [menuSearch, setMenuSearch] = useState('');
+  // Categoría visible (scroll-spy): resalta el chip de la sección en pantalla.
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+  // Scroll-spy de los chips de categoría. Va acá arriba (antes de los early-returns)
+  // por las reglas de hooks, y consulta el DOM — así corre recién cuando las
+  // secciones existen (rama carta). Se re-observa si cambia el menú o la búsqueda
+  // (que reordena/filtra las secciones). La sección "activa" es la más arriba que
+  // cruza la zona superior del viewport.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const secciones = Array.from(document.querySelectorAll<HTMLElement>('section[id^="cat-"]'));
+    if (secciones.length === 0) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const arriba = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (arriba) setActiveCat(arriba.target.id.slice('cat-'.length));
+      },
+      { rootMargin: '-25% 0px -70% 0px', threshold: 0 },
+    );
+    secciones.forEach((s) => obs.observe(s));
+    return () => obs.disconnect();
+  }, [menu, menuSearch]);
   // Cupón de descuento que tipea el cliente (lo valida el server al confirmar).
   const [couponCode, setCouponCode] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
@@ -540,6 +563,22 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
     // igual cobra el envío — cobro sorpresa al recibir.
     (!feeApplies || !isByDistance || deliveryQuote != null) &&
     !submitting;
+
+  // Qué le falta al usuario para poder confirmar (sólo lo que él puede completar).
+  // Se muestra arriba del botón: antes el botón quedaba deshabilitado y MUDO y el
+  // comensal no sabía por qué — un callejón sin salida en el paso de mayor
+  // intención de compra. El `disabled` sigue como red; el aviso lo destraba.
+  const faltanParaConfirmar: string[] =
+    cartLines.length > 0 && isOpen && !submitting
+      ? [
+          !fulfillment && 'elegí retiro o delivery',
+          !nameOk && 'tu nombre',
+          !phoneOk && 'tu teléfono',
+          fulfillment === 'DELIVERY' && !addressOk && 'tu dirección',
+          fulfillment === 'DELIVERY' && !locationOk && 'la ubicación en el mapa',
+          !turnstileToken && 'la verificación de acá arriba',
+        ].filter((x): x is string => Boolean(x))
+      : [];
 
   async function onConfirmOrder() {
     if (!menu || !fulfillment) return;
@@ -936,7 +975,8 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                 <a
                   key={category.id}
                   href={`#cat-${category.id}`}
-                  className="btn btn-sm shrink-0 whitespace-nowrap"
+                  aria-current={activeCat === category.id ? 'true' : undefined}
+                  className={`btn btn-sm shrink-0 whitespace-nowrap ${activeCat === category.id ? 'btn-primary' : ''}`}
                 >
                   {category.name}
                 </a>
@@ -945,7 +985,17 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
         )}
 
         <div className="space-y-8">
-          {visibleCategories.map((category) => (
+          {visibleCategories.map((category) => {
+            // Densidad de fotos de la sección: si menos de ~30% de los ítems
+            // tienen imagen, NO se reserva la columna de foto — con el default
+            // `showImages:true` y un menú casi sin fotos (el caso más común: el
+            // local fotografió 2 platos), quedaba un tercio izquierdo vacío en cada
+            // tarjeta y la carta se leía como "rota / a medio cargar". Con fotos
+            // suficientes, los pocos placeholders conviven bien con las fotos reales.
+            const conFoto = category.items.filter((i) => i.imageUrl).length;
+            const showImagesHere =
+              resolved.showImages && category.items.length > 0 && conFoto / category.items.length >= 0.3;
+            return (
             <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-16">
               <h2 className="mb-3 font-heading text-xl font-semibold tracking-tight text-foreground">{category.name}</h2>
               <div className={isGridLayout ? 'grid grid-cols-2 gap-3 sm:grid-cols-3' : 'space-y-3'}>
@@ -962,7 +1012,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                         item.soldOut ? 'opacity-60' : ''
                       }`}
                     >
-                      {resolved.showImages && (
+                      {showImagesHere && (
                         <MenuItemImage
                           src={item.imageUrl}
                           alt={item.name}
@@ -1051,7 +1101,8 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                 )}
               </div>
             </section>
-          ))}
+            );
+          })}
           {menu.categories.length === 0 && (
             <EmptyState
               icon={UtensilsCrossed}
@@ -1098,8 +1149,16 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
 
       {/* Revisión del carrito + tipo de entrega + datos de contacto. */}
       {cartOpen && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
-          <div className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl">
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          onClick={() => setCartOpen(false)}
+        >
+          {/* stopPropagation: tocar DENTRO del panel no cierra; tocar el backdrop
+              (afuera) sí — la convención que el comensal espera de una hoja modal. */}
+          <div
+            className="panel max-h-[90vh] w-full max-w-md animate-slide-up overflow-y-auto rounded-b-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-b-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="mb-4 font-heading text-xl font-semibold tracking-tight text-foreground">Tu pedido</h2>
 
             <ul className="mb-4 space-y-4">
@@ -1129,7 +1188,7 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
                       >
                         <Plus className="h-4 w-4" />
                       </button>
-                      <span className="tabular w-16 shrink-0 text-right text-base font-medium text-foreground">
+                      <span className="tabular min-w-[5rem] shrink-0 whitespace-nowrap text-right text-base font-medium text-foreground">
                         {formatMoney(lineUnitPrice(line) * line.quantity, menu.countryCode)}
                       </span>
                     </div>
@@ -1395,6 +1454,13 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
             <div className="mb-4 flex justify-center">
               <Turnstile key={turnstileNonce} onVerify={setTurnstileToken} />
             </div>
+
+            {faltanParaConfirmar.length > 0 && (
+              <p className="mb-3 text-center text-sm text-muted-foreground">
+                Para confirmar falta:{' '}
+                <span className="font-medium text-foreground">{faltanParaConfirmar.join(', ')}</span>.
+              </p>
+            )}
 
             <div className="flex gap-2">
               <button type="button" onClick={() => setCartOpen(false)} className="btn btn-lg flex-1">

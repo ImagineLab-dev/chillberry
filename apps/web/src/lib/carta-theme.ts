@@ -91,6 +91,14 @@ export function cartaThemeStyle(
     const tok = brandTokens(primary);
     style['--primary'] = tok.primary;
     style['--primary-foreground'] = tok.primaryForeground;
+    // Segundo stop del degradé de marca (portada hero). Por defecto es magenta
+    // fijo en globals.css, pensado para el violeta de Chillberry — pero en una
+    // carta themeada eso da un hero "color-del-local → magenta", discorde. Se
+    // deriva del color del tenant: el accent si lo eligió, o el mismo primario
+    // con el tono rotado ~32° (un degradé cohesivo del color del local, no una
+    // mezcla con un color ajeno).
+    style['--brand-gradient-to'] =
+      t.accentColor && isValidHexColor(t.accentColor) ? brandTokens(t.accentColor).primary : rotarTono(tok.primary, 32);
   }
   if (t.accentColor && isValidHexColor(t.accentColor)) {
     style['--carta-accent'] = brandTokens(t.accentColor).primary;
@@ -98,4 +106,18 @@ export function cartaThemeStyle(
   style['--carta-font'] = CARTA_FONTS[t.font ?? DEFAULT_CARTA_THEME.font].stack;
 
   return style as CSSProperties;
+}
+
+/**
+ * Rota el TONO de un triplete HSL `"H S% L%"` (el formato que devuelve
+ * `brandTokens`, pensado para envolver con `hsl(var(--x))`) en `deg` grados,
+ * manteniendo saturación y luminosidad. Sirve para derivar el segundo stop del
+ * degradé de marca del color del tenant. Si el triplete no parsea, devuelve el
+ * original — el degradé queda de un solo color, que es un fallback seguro.
+ */
+function rotarTono(hslTriplet: string, deg: number): string {
+  const m = /^\s*([\d.]+)\s+(.+)$/.exec(hslTriplet);
+  if (!m) return hslTriplet;
+  const h = (((Number(m[1]) + deg) % 360) + 360) % 360;
+  return `${h} ${m[2]}`;
 }

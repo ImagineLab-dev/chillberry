@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-30T00:00:00Z",
+  "title": "Design System: Chillberry",
+  "extensions": {
+    "colorMeta": {
+      "brand-violet": {
+        "role": "primary",
+        "displayName": "Violeta de Marca",
+        "canonical": "hsl(252 70% 53%)",
+        "note": "#5533DB. L=53% fijo en claro (no aclarar); sube a hsl(252 90% 76%) / #A18BF9 en oscuro.",
+        "tonalRamp": [
+          "hsl(252 70% 16%)",
+          "hsl(252 70% 26%)",
+          "hsl(252 70% 36%)",
+          "hsl(252 70% 46%)",
+          "hsl(252 70% 53%)",
+          "hsl(252 74% 66%)",
+          "hsl(252 82% 78%)",
+          "hsl(252 88% 92%)"
+        ]
+      },
+      "brand-magenta": {
+        "role": "secondary",
+        "displayName": "Magenta de Marca",
+        "canonical": "hsl(285 70% 45%)",
+        "note": "Segundo stop del degradé de marca (violeta -> magenta). Sólo hero.",
+        "tonalRamp": [
+          "hsl(285 70% 15%)",
+          "hsl(285 70% 24%)",
+          "hsl(285 70% 33%)",
+          "hsl(285 70% 45%)",
+          "hsl(285 72% 56%)",
+          "hsl(285 78% 67%)",
+          "hsl(285 84% 79%)",
+          "hsl(285 88% 91%)"
+        ]
+      },
+      "lavender-paper": {
+        "role": "neutral",
+        "displayName": "Papel Lavanda",
+        "canonical": "hsl(260 40% 98%)",
+        "note": "#F7F5FB fondo de página; en oscuro Tinta Violeta #14101F (hsl(258 32% 9%)).",
+        "tonalRamp": [
+          "hsl(258 32% 9%)",
+          "hsl(258 26% 14%)",
+          "hsl(255 20% 27%)",
+          "hsl(250 14% 45%)",
+          "hsl(252 12% 62%)",
+          "hsl(255 20% 82%)",
+          "hsl(258 30% 95%)",
+          "hsl(260 40% 98%)"
+        ]
+      },
+      "ink-violet": {
+        "role": "neutral",
+        "displayName": "Tinta Violeta",
+        "canonical": "hsl(250 28% 13%)",
+        "note": "Texto principal. >15:1 sobre el fondo. En oscuro #F6F6F9."
+      },
+      "ok": { "role": "semantic", "displayName": "OK / Verde", "canonical": "hsl(152 62% 40%)" },
+      "warn": { "role": "semantic", "displayName": "Warn / Ámbar", "canonical": "hsl(38 92% 45%)" },
+      "info": { "role": "semantic", "displayName": "Info / Celeste", "canonical": "hsl(205 85% 40%)" },
+      "error": { "role": "semantic", "displayName": "Error / Rosa", "canonical": "hsl(350 75% 47%)" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hanken Grotesk 700, tracking -0.03em. Sólo h1-h4." },
+      "body": { "displayName": "Body", "purpose": "Plus Jakarta Sans. Texto, botones, labels." },
+      "mono": { "displayName": "Mono / Números", "purpose": "JetBrains Mono tabular. Precios, métricas, timers, IDs." }
+    },
+    "shadows": [
+      { "name": "clay", "value": "0 1px 1px hsl(250 40% 40% / 0.04), 0 8px 16px -6px hsl(250 40% 40% / 0.14), 0 22px 44px -12px hsl(250 40% 40% / 0.18), inset 0 2px 1px -1px hsl(0 0% 100% / 0.9)", "purpose": "Escala generosa: la superficie inflada de .panel y .card." },
+      { "name": "clay-sm", "value": "0 1px 1px hsl(250 40% 40% / 0.04), 0 4px 8px -3px hsl(250 40% 40% / 0.11), 0 10px 18px -8px hsl(250 40% 40% / 0.13), inset 0 1px 0 0 hsl(0 0% 100% / 0.9)", "purpose": "Escala contenida: .card-dense (KDS, POS, tablas)." },
+      { "name": "clay-lift", "value": "0 2px 3px hsl(250 40% 40% / 0.05), 0 12px 22px -6px hsl(250 40% 40% / 0.18), 0 30px 56px -14px hsl(250 40% 40% / 0.22), inset 0 2px 1px -1px hsl(0 0% 100% / 0.9)", "purpose": "Hover de .card-interactive (sube 2px)." },
+      { "name": "clay-inset", "value": "inset 0 2px 4px 0 hsl(250 40% 40% / 0.12), inset 0 1px 1px 0 hsl(250 40% 40% / 0.07)", "purpose": "El hueco hundido de los inputs." },
+      { "name": "clay-primary", "value": "0 2px 4px -1px hsl(252 70% 53% / 0.35), 0 10px 22px -6px hsl(252 70% 53% / 0.5), inset 0 1px 0 0 hsl(0 0% 100% / 0.22)", "purpose": "Glow violeta debajo de los botones de marca." }
+    ],
+    "motion": [
+      { "name": "ease-clay", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Ease-out exponencial: arranca rápido, asienta suave. Una sola curva para TODO el motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "El botón de marca: violeta pleno con glow violeta debajo. Se hunde al apretar.",
+      "html": "<button class=\"ds-btn-primary\">Guardar cambios</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid transparent; border-radius: 9999px; background: hsl(252 70% 53%); color: #fff; padding: 0.5rem 1rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; cursor: pointer; box-shadow: 0 2px 4px -1px hsl(252 70% 53% / 0.35), 0 10px 22px -6px hsl(252 70% 53% / 0.5), inset 0 1px 0 0 hsl(0 0% 100% / 0.22); transition: background-color 150ms ease, transform 120ms cubic-bezier(0.22,1,0.36,1); } .ds-btn-primary:hover { background: hsl(252 70% 53% / 0.9); } .ds-btn-primary:focus-visible { outline: 2px solid hsl(252 70% 53%); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); box-shadow: 0 1px 2px 0 hsl(250 40% 40% / 0.06); }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Botón neutro: superficie blanca con borde hilo casi invisible y sombra clay chica.",
+      "html": "<button class=\"ds-btn\">Cancelar</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid hsl(255 26% 91%); border-radius: 9999px; background: #fff; color: hsl(250 28% 13%); padding: 0.5rem 1rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; cursor: pointer; box-shadow: 0 1px 1px hsl(250 40% 40% / 0.04), 0 4px 8px -3px hsl(250 40% 40% / 0.11), inset 0 1px 0 0 hsl(0 0% 100% / 0.9); transition: background-color 150ms ease, transform 120ms cubic-bezier(0.22,1,0.36,1); } .ds-btn:hover { background: hsl(258 30% 95%); } .ds-btn:focus-visible { outline: 2px solid hsl(252 70% 53%); outline-offset: 2px; } .ds-btn:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "El 'no botón': sin volumen ni sombra, sólo texto apagado.",
+      "html": "<button class=\"ds-btn-ghost\">Ver más</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid transparent; border-radius: 9999px; background: transparent; color: hsl(250 12% 40%); padding: 0.5rem 1rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; } .ds-btn-ghost:hover { background: hsl(258 30% 95%); color: hsl(250 28% 13%); }"
+    },
+    {
+      "name": "Sunken Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "El campo HUNDIDO: fondo lavanda (más oscuro que la tarjeta) + sombra inset. Focus con anillo violeta.",
+      "html": "<input class=\"ds-input\" placeholder=\"Buscar producto...\" />",
+      "css": ".ds-input { display: block; width: 260px; border: 1px solid hsl(250 18% 60%); border-radius: 0.875rem; background: hsl(260 40% 98%); color: hsl(250 28% 13%); padding: 0.5rem 0.75rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; line-height: 1.25rem; box-shadow: inset 0 2px 4px 0 hsl(250 40% 40% / 0.12), inset 0 1px 1px 0 hsl(250 40% 40% / 0.07); transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: hsl(250 12% 40%); } .ds-input:focus { outline: none; border-color: hsl(252 70% 53%); box-shadow: inset 0 2px 4px 0 hsl(250 40% 40% / 0.12), 0 0 0 3px hsl(252 70% 53% / 0.2); }"
+    },
+    {
+      "name": "Clay Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "La superficie INFLADA: blanca, esquinas 20px, sombra clay amplia, borde casi invisible.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">Ventas de hoy</div><div class=\"ds-card-num\">₲ 4.820.000</div></div>",
+      "css": ".ds-card { border: 1px solid hsl(255 26% 91%); border-radius: 1.25rem; background: #fff; padding: 1.25rem; box-shadow: 0 1px 1px hsl(250 40% 40% / 0.04), 0 8px 16px -6px hsl(250 40% 40% / 0.14), 0 22px 44px -12px hsl(250 40% 40% / 0.18), inset 0 2px 1px -1px hsl(0 0% 100% / 0.9); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-card-title { color: hsl(250 12% 40%); font-size: 0.8125rem; font-weight: 500; } .ds-card-num { margin-top: 0.25rem; color: hsl(250 28% 13%); font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700; font-size: 1.75rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-primary",
+      "description": "Pill de estado: tinte al 15% + texto medido + borde al 25%. Un color por estado.",
+      "html": "<span class=\"ds-badge-ok\">Cobrado</span> <span class=\"ds-badge-primary\">Nuevo</span>",
+      "css": ".ds-badge-ok, .ds-badge-primary { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 9999px; padding: 0.125rem 0.5rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; line-height: 1rem; } .ds-badge-ok { background: hsl(152 62% 40% / 0.15); color: hsl(152 75% 22%); border: 1px solid hsl(152 62% 40% / 0.25); } .ds-badge-primary { background: hsl(252 70% 53% / 0.15); color: hsl(252 70% 53%); border: 1px solid hsl(252 70% 53% / 0.25); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Arcilla Violeta",
+    "overview": "Cada superficie de Chillberry se siente modelada, no dibujada: tarjetas casi blancas que se inflan sobre un fondo lavanda con sombra tibia tintada de violeta, y campos que se hunden como una huella. El borde es casi invisible a propósito — la profundidad la da la sombra. Es claymorphism con un violeta de marca disciplinado y números en mono que le dan un aire premium/fintech. Cálido y táctil por el material; serio y confiable por el rigor: cada par texto/fondo está medido contra WCAG AA en su peor caso, no estimado. Vive en pantallas duras (KDS a 2 metros, caja con dedos grasosos, carta en el celu del cliente), por eso tiene dos densidades del mismo material y nunca una tercera.",
+    "keyCharacteristics": [
+      "Material de arcilla: superficies infladas (sombra + highlight), campos hundidos (inset).",
+      "Violeta de marca disciplinado sobre lavanda-blanco (claro) o tinta violeta (oscuro).",
+      "Números en mono tabular (JetBrains Mono) — precios, métricas, timers, IDs.",
+      "Contraste medido, no estimado; legibilidad como invariante.",
+      "Dos densidades (generosa / contenida), doble tema con alphas de sombra distintos."
+    ],
+    "rules": [
+      { "name": "La Regla del Acento Único", "body": "El violeta es acento y momento hero, jamás fondo general.", "section": "colors" },
+      { "name": "La Regla de Medir, no Estimar", "body": "Ningún par texto/fondo se elige a ojo; build/typecheck/lint son ciegos al contraste. Medir el color compuesto contra WCAG AA es la única red.", "section": "colors" },
+      { "name": "La Regla de las Tres Voces", "body": "Hanken en titulares, Plus Jakarta en cuerpo, JetBrains Mono en números — cada una en su lugar. Los botones usan la body, no la display.", "section": "typography" },
+      { "name": "La Regla del Número Tabular", "body": "Toda cifra significativa va en mono con tabular-nums.", "section": "typography" },
+      { "name": "La Regla de la Sombra Cálida", "body": "Las sombras van tintadas de violeta, nunca gris neutro.", "section": "elevation" },
+      { "name": "La Regla del Par", "body": "Radio y sombra van en pareja: si cambiás un radio de escala, cambiá su sombra.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do medir cada par texto/fondo contra WCAG AA en su peor caso antes de commitear un color.",
+      "Do elegir una de las dos densidades para cada superficie nueva (generosa default / contenida opt-in).",
+      "Do poner toda cifra en mono tabular.",
+      "Do mantener el par radio-sombra (clay / clay-sm).",
+      "Do usar el degradé de marca sólo en momentos hero, como estructura.",
+      "Do dar foco visible con :focus-visible y mínimo táctil 44px en botones de ícono.",
+      "Do tintar sombras y neutros de violeta, nada de gris neutro."
+    ],
+    "donts": [
+      "Don't usar el violeta como fondo general de una pantalla.",
+      "Don't subir la luminosidad del --primary en claro (L=53%): rompe el texto violeta sobre tintes violeta.",
+      "Don't identificar un control sólo por el borde (es casi invisible a propósito).",
+      "Don't usar la fuente display (Hanken) en botones ni en cuerpo.",
+      "Don't inventar una tercera escala de densidad ni de radio/sombra."
+    ]
+  }
+}
