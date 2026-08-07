@@ -62,7 +62,9 @@ const STATUS_ICON: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 const STATUS_TONE: Record<string, Tone> = {
-  PENDING: 'neutral',
+  // PENDING es un momento POSITIVO ("¡recibimos tu pedido!", la cocina lo prepara):
+  // tono `info` (activo) en vez de `neutral` gris, que se leía como "trabado".
+  PENDING: 'info',
   DRIVER_ASSIGNED: 'warn',
   ACCEPTED: 'info',
   PICKED_UP: 'info',
@@ -96,10 +98,12 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
   const [ratingComment, setRatingComment] = useState('');
   const [ratingBusy, setRatingBusy] = useState(false);
   const [ratingDone, setRatingDone] = useState(false);
+  const [ratingError, setRatingError] = useState(false);
 
   async function submitRating() {
     if (rating < 1) return;
     setRatingBusy(true);
+    setRatingError(false);
     try {
       const res = await fetch(`${API_BASE}/track/${token}/rate`, {
         method: 'POST',
@@ -109,7 +113,9 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
       if (!res.ok) throw new Error();
       setRatingDone(true);
     } catch {
-      // Silencioso: si falla, el cliente puede reintentar; no es crítico.
+      // Antes era silencioso: el cliente no sabía si se guardó. Un aviso simple
+      // para que sepa que puede reintentar (no es crítico, se puede volver a mandar).
+      setRatingError(true);
     } finally {
       setRatingBusy(false);
     }
@@ -154,7 +160,7 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="panel w-full max-w-sm p-6 text-center">
-        <h1 className="mb-6 font-heading text-lg font-semibold text-foreground">Seguimiento de tu pedido</h1>
+        <h1 className="mb-6 font-heading text-xl font-semibold text-foreground">Seguimiento de tu pedido</h1>
 
         {error && (
           <Alert tone="error" className="text-left">
@@ -196,13 +202,28 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
                 el restaurante para la zona y no se recalcula nunca, así que
                 sólo se muestra cuando no hay ruta. */}
             {tracking.routeMinutes != null ? (
-              <p className="mt-3 text-base text-muted-foreground">
-                Llega en{' '}
-                <span className="tabular font-semibold text-foreground">~{tracking.routeMinutes} min</span>
+              /* ETA en vivo = cifra HÉROE: es el dato que el cliente busca en cada
+                 refresco, así que manda visualmente (antes iba chico dentro de una
+                 línea). El punto "En vivo" avisa que se actualiza solo → menos
+                 necesidad de refrescar a mano. */
+              <div className="mt-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Llega en</p>
+                <p className="tabular font-heading text-4xl font-bold leading-none text-foreground">
+                  ~{tracking.routeMinutes} min
+                </p>
                 {tracking.routeDistanceM != null && (
-                  <span className="tabular"> · a {(tracking.routeDistanceM / 1000).toFixed(1)} km</span>
+                  <p className="tabular mt-1 text-sm text-muted-foreground">
+                    a {(tracking.routeDistanceM / 1000).toFixed(1)} km de tu dirección
+                  </p>
                 )}
-              </p>
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-ok-foreground">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
+                  </span>
+                  En vivo
+                </p>
+              </div>
             ) : (
               tracking.estimatedMinutes != null && (
                 <p className="mt-3 text-base text-muted-foreground">
@@ -215,7 +236,14 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
             {/* Avisos al teléfono: es lo que reemplaza al WhatsApp. Sin esto,
                 quien cierra la pestaña no se entera de nada hasta volver. */}
             <div className="mt-4">
-              <ActivarAvisos ruta={`push/suscribir/seguimiento/${token}`} />
+              <ActivarAvisos
+                ruta={`push/suscribir/seguimiento/${token}`}
+                texto={
+                  tracking.status === 'PICKED_UP' || tracking.status === 'ACCEPTED'
+                    ? 'Avisame cuando llegue'
+                    : undefined
+                }
+              />
             </div>
 
             {tracking.driverName && (
@@ -302,6 +330,9 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
                       className="input mb-3 w-full resize-none text-sm"
                       aria-label="Comentario de la entrega"
                     />
+                    {ratingError && (
+                      <p className="mb-2 text-sm text-error-foreground">No se pudo enviar. Probá de nuevo.</p>
+                    )}
                     <button
                       type="button"
                       onClick={submitRating}
