@@ -18,7 +18,7 @@ import {
 import { formatMoney } from '@chillberry/domain';
 import { api, type ApiError } from '@/lib/api-client';
 import { getCurrentUser, type MeResponse } from '@/lib/auth';
-import { Alert, Badge, PageHeader, Skeleton, type Tone } from '@/components/ui';
+import { Alert, Badge, EmptyState, PageHeader, Skeleton, type Tone } from '@/components/ui';
 
 // Fallback mientras `/tenant-settings` todavía no respondió (ver useEffect) —
 // no debe llegar `undefined` a formatMoney.
@@ -80,6 +80,12 @@ function formatNumber(value: number) {
   return Number(value).toLocaleString('es-PY');
 }
 
+// Pluralización real: "1 delivery" / "2 deliveries". El "(s)" de máquina leía
+// como placeholder de programador y contradecía la voz cuidada del resto.
+function plural(n: number, singular: string, pluralForm: string) {
+  return `${formatNumber(n)} ${n === 1 ? singular : pluralForm}`;
+}
+
 /** Tarjeta de métrica: número grande en `foreground`; el color queda para el
  *  ícono/badge, que es donde comunica estado. */
 function StatCard({
@@ -96,11 +102,13 @@ function StatCard({
   children?: React.ReactNode;
 }) {
   const iconTone =
-    tone === 'ok'
-      ? 'bg-ok/15 text-ok-foreground'
-      : tone === 'warn'
-        ? 'bg-warn/15 text-warn-foreground'
-        : 'bg-muted text-muted-foreground';
+    tone === 'primary'
+      ? 'bg-primary/15 text-primary'
+      : tone === 'ok'
+        ? 'bg-ok/15 text-ok-foreground'
+        : tone === 'warn'
+          ? 'bg-warn/15 text-warn-foreground'
+          : 'bg-muted text-muted-foreground';
 
   return (
     <div className="card p-5">
@@ -146,10 +154,20 @@ export default function DashboardPage() {
       ? Math.round(((summary.todayRevenue - summary.yesterdayRevenue) / summary.yesterdayRevenue) * 100)
       : null;
   const maxDayRevenue = summary ? Math.max(1, ...summary.last7Days.map((d) => d.revenue)) : 1;
+  // ¿Hubo alguna venta en la ventana de 7 días? Si no, el gráfico va a un estado
+  // vacío con voz, en vez de 7 barras de 2px que parecen un gráfico roto.
+  const hasWeekRevenue = summary ? summary.last7Days.some((d) => d.revenue > 0) : false;
   const alerts = summary?.alerts;
   const hasAlerts =
     !!alerts && (alerts.unassignedDeliveries > 0 || alerts.staleCashSessions > 0 || alerts.lowStock.count > 0);
-  const isAtBranchLimit = summary
+  // "Al límite" (rojo) sólo si REALMENTE se pasó del cupo (raro). Usar el cupo
+  // incluido del plan (p. ej. 1/1 en Starter) es lo normal, no un problema: eso
+  // va en tono neutro. Gastar el rojo en un no-problema lo vacía de significado
+  // y grita más fuerte que la tarea operativa real de arriba.
+  const isOverBranchLimit = summary
+    ? summary.subscription.usage.branches > summary.subscription.usage.maxBranches
+    : false;
+  const isAtBranchCapacity = summary
     ? summary.subscription.usage.branches >= summary.subscription.usage.maxBranches
     : false;
   const branchUsagePct = summary
@@ -198,7 +216,7 @@ export default function DashboardPage() {
                     >
                       <span className="flex items-center gap-2 text-sm">
                         <Bike className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        {alerts.unassignedDeliveries} delivery(s) sin repartidor asignado
+                        {plural(alerts.unassignedDeliveries, 'delivery', 'deliveries')} sin repartidor asignado
                       </span>
                       <Badge tone="error">Asignar</Badge>
                     </Link>
@@ -212,7 +230,7 @@ export default function DashboardPage() {
                     >
                       <span className="flex items-center gap-2 text-sm">
                         <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        {alerts.staleCashSessions} caja(s) abierta(s) de un día anterior sin cerrar
+                        {plural(alerts.staleCashSessions, 'caja abierta', 'cajas abiertas')} de un día anterior sin cerrar
                       </span>
                       <Badge tone="warn">Cerrar caja</Badge>
                     </Link>
@@ -226,7 +244,7 @@ export default function DashboardPage() {
                     >
                       <span className="flex items-center gap-2 text-sm">
                         <Package className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        {alerts.lowStock.count} insumo(s) con stock bajo
+                        {plural(alerts.lowStock.count, 'insumo', 'insumos')} con stock bajo
                         <span className="hidden text-muted-foreground sm:inline">
                           ({alerts.lowStock.items.map((i) => i.name).slice(0, 3).join(', ')}
                           {alerts.lowStock.count > 3 ? '…' : ''})
@@ -247,7 +265,7 @@ export default function DashboardPage() {
               label="Ingresos hoy"
               value={formatMoney(summary.todayRevenue, countryCode)}
               icon={Wallet}
-              tone="ok"
+              tone="primary"
             >
               {revenueDeltaPct !== null && (
                 <p
@@ -277,11 +295,12 @@ export default function DashboardPage() {
                 {summary.tables.total}
               </p>
               <div className="flex flex-wrap gap-1.5">
-                <Badge tone="error">{summary.tables.OCCUPIED} ocupadas</Badge>
-                <Badge tone="ok">{summary.tables.AVAILABLE} disponibles</Badge>
-                {/* Reservas reales de hoy (del sistema de reservas), no el estado
-                    RESERVED de la mesa que nada seteaba. */}
-                <Badge tone="warn">{summary.todayReservations} reservas hoy</Badge>
+                {/* Ocupada = servicio activo = plata, no un error: violeta de marca
+                    (actividad), no rojo. Reservas de hoy (del sistema de reservas,
+                    no el RESERVED de la mesa que nada seteaba) = informativo, neutral. */}
+                <Badge tone="primary">{plural(summary.tables.OCCUPIED, 'ocupada', 'ocupadas')}</Badge>
+                <Badge tone="ok">{plural(summary.tables.AVAILABLE, 'disponible', 'disponibles')}</Badge>
+                <Badge tone="neutral">{plural(summary.todayReservations, 'reserva', 'reservas')} hoy</Badge>
               </div>
             </div>
 
@@ -307,21 +326,27 @@ export default function DashboardPage() {
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                 <span>Sucursales usadas</span>
-                <span className={`tabular ${isAtBranchLimit ? 'font-semibold text-error-foreground' : ''}`}>
+                <span className={`tabular ${isOverBranchLimit ? 'font-semibold text-error-foreground' : ''}`}>
                   {summary.subscription.usage.branches} / {summary.subscription.usage.maxBranches}
                 </span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className={`h-full rounded-full ${isAtBranchLimit ? 'bg-error' : 'bg-ok'}`}
+                  className={`h-full rounded-full ${
+                    isOverBranchLimit ? 'bg-error' : isAtBranchCapacity ? 'bg-primary' : 'bg-ok'
+                  }`}
                   style={{ width: `${branchUsagePct}%` }}
                 />
               </div>
-              {isAtBranchLimit && (
+              {isOverBranchLimit ? (
                 <p className="mt-2 text-xs font-medium text-error-foreground">
-                  Llegaste al límite de sucursales de tu plan. Tocá acá para subir de plan.
+                  Te pasaste del límite de sucursales de tu plan.
                 </p>
-              )}
+              ) : isAtBranchCapacity ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Estás usando todas las sucursales de tu plan. Para sumar otra, cambiá de plan.
+                </p>
+              ) : null}
             </div>
           </Link>
 
@@ -331,35 +356,45 @@ export default function DashboardPage() {
           <div className="card mb-8 p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
               <h2 className="font-heading text-base font-semibold">Ingresos — últimos 7 días</h2>
-              <span className="text-xs text-muted-foreground">Zona horaria del local</span>
+              {hasWeekRevenue && <span className="text-xs text-muted-foreground">Zona horaria del local</span>}
             </div>
-            {/* Sin `items-end`: alineaba cada columna al fondo dejándola de
-                altura AUTOMÁTICA, y entonces el `height: %` de la barra no tenía
-                contra qué resolver — se dibujaban en 0 y el gráfico se veía
-                vacío. Con el stretch por defecto, la columna hereda los 8rem y
-                el `flex-1` del riel le da altura definida a la barra. */}
-            <div className="flex h-32 gap-2">
-              {summary.last7Days.map((d, idx) => {
-                const isToday = idx === summary.last7Days.length - 1;
-                const heightPct = Math.max(2, Math.round((d.revenue / maxDayRevenue) * 100));
-                // 'YYYY-MM-DD' → etiqueta de día corta sin parsear a Date (evita
-                // corrimientos de zona): tomamos el día del mes.
-                const dayLabel = d.date.slice(8, 10);
-                return (
-                  <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
-                    <div className="flex w-full flex-1 items-end" title={formatMoney(d.revenue, countryCode)}>
-                      <div
-                        className={`w-full rounded-t ${isToday ? 'bg-primary' : 'bg-ok/50'}`}
-                        style={{ height: `${heightPct}%` }}
-                      />
+            {hasWeekRevenue ? (
+              // Sin `items-end`: alineaba cada columna al fondo dejándola de altura
+              // AUTOMÁTICA, y el `height: %` de la barra no tenía contra qué resolver
+              // (se dibujaban en 0). Con el stretch por defecto la columna hereda los
+              // 8rem y el `flex-1` del riel le da altura definida a la barra.
+              <div className="flex h-32 gap-2">
+                {summary.last7Days.map((d, idx) => {
+                  const isToday = idx === summary.last7Days.length - 1;
+                  const heightPct = Math.max(2, Math.round((d.revenue / maxDayRevenue) * 100));
+                  // 'YYYY-MM-DD' → etiqueta de día corta sin parsear a Date.
+                  const dayLabel = d.date.slice(8, 10);
+                  return (
+                    <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="flex w-full flex-1 items-end" title={formatMoney(d.revenue, countryCode)}>
+                        <div
+                          className={`w-full rounded-t ${isToday ? 'bg-primary' : 'bg-ok/50'}`}
+                          style={{ height: `${heightPct}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                        {dayLabel}
+                      </span>
                     </div>
-                    <span className={`text-xs ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                      {dayLabel}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              // Estado vacío con voz: sin esto, 7 barras de 2px sobre una caja blanca
+              // leían como "gráfico roto". Un local que recién arranca ve una
+              // explicación, no un artefacto.
+              <EmptyState
+                icon={TrendingUp}
+                title="Todavía no hay ventas esta semana"
+                description="Cuando entren pedidos, acá vas a ver la tendencia de tus ingresos, día por día."
+                className="py-8"
+              />
+            )}
           </div>
         </>
       )}
