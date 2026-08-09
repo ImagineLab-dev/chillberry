@@ -986,7 +986,12 @@ export default function BranchOrderPage({ params }: { params: Promise<{ slug: st
           </nav>
         )}
 
-        <div className="space-y-8">
+        {/* La carta se DESPLIEGA al entrar: las categorías caen una atrás de otra
+            (demo-stagger — misma curva --ease-clay que el resto del motion "arcilla
+            viva"). Corre una sola vez al montar el menú (las <section> tienen key
+            estable, así que buscar/editar el carrito no la re-dispara); el bloque
+            universal prefers-reduced-motion la neutraliza. */}
+        <div className="demo-stagger space-y-8">
           {visibleCategories.map((category) => {
             // Densidad de fotos de la sección: si menos de ~30% de los ítems
             // tienen imagen, NO se reserva la columna de foto — con el default
