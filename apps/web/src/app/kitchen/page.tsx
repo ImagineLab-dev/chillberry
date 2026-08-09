@@ -342,7 +342,11 @@ export default function KitchenPage() {
                 return (
                   <div
                     key={task.id}
-                    className={`card card-dense overflow-hidden ${delayed ? 'border-error ring-2 ring-error' : ''}`}
+                    /* clay-settle: la comanda se asienta al MONTAR — sólo cuando
+                       llega nueva o avanza de columna (remonta). El board reconcilia
+                       por key=task.id, así que un poll sin cambios NO la re-anima
+                       (nada de parpadeo en la cocina). */
+                    className={`clay-settle card card-dense overflow-hidden ${delayed ? 'border-error ring-2 ring-error' : ''}`}
                   >
                     {/* "Retrasado" ocupa el ancho completo y va en color pleno: se
                         tiene que ver de reojo desde el otro lado de la cocina. */}
