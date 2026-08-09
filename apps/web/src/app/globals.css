@@ -275,6 +275,48 @@
     animation-delay: 340ms;
   }
 
+  /* ── Lenguaje de motion "arcilla viva" ────────────────────────────────────
+     El clay ya tiene la FÍSICA de un material (sombra inflada, campo hundido);
+     esto le da el COMPORTAMIENTO. Dos primitivos, pensados para reusar en todo
+     el producto — la semilla de un lenguaje de motion coherente:
+       · clay-settle  — una superficie que se ASIENTA al aparecer (entrada).
+       · clay-breathe — un objeto VIVO que respira. Se aplica sólo cuando el
+         estado está activo, así el motion queda atado al significado, no decora.
+     El bloque `prefers-reduced-motion` de más abajo neutraliza ambos solo. */
+  @keyframes clay-settle {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .clay-settle {
+    /* Curva de la casa (`--ease-clay`): ease-out con un dejo de asentamiento. */
+    animation: clay-settle 420ms var(--ease-clay) both;
+  }
+
+  /* Respiración: escala simétrica y lenta + un halo de sombra que florece en el
+     color del tono (`currentColor` = el `text-*-foreground` del disco). Es la
+     Regla de la Sombra llevada a motion: el material respira en su propia luz.
+     3.2s y ease-in-out = calmo; es una pantalla de espera, no una alarma. */
+  @keyframes clay-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 6px 0 color-mix(in srgb, currentColor 16%, transparent);
+    }
+    50% {
+      transform: scale(1.045);
+      box-shadow: 0 0 24px 5px color-mix(in srgb, currentColor 38%, transparent);
+    }
+  }
+  .clay-breathe {
+    animation: clay-breathe 3.2s ease-in-out infinite;
+  }
+
   /* Scroll suave al saltar a una categoría de la carta por ancla (#cat-…).
      El bloque de reduced-motion de abajo lo devuelve a 'auto' para quien lo pida. */
   html {

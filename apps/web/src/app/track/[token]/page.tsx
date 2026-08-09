@@ -164,6 +164,10 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
   const isTerminalNegative = tracking
     ? ['DRIVER_CANCELLED', 'CUSTOMER_CANCELLED', 'RESTAURANT_CANCELLED', 'FAILED'].includes(tracking.status)
     : false;
+  // "Vivo" = la entrega está EN CURSO (no terminal, no entregada). Sólo entonces
+  // el disco de estado respira: el motion queda atado al significado — entregado
+  // ya está asentado, cancelado se detuvo. Ninguno respira.
+  const isLive = !!tracking && !isTerminalNegative && tracking.status !== 'DELIVERED';
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -190,9 +194,14 @@ export default function TrackPage({ params }: { params: Promise<{ token: string 
         )}
 
         {tracking && (
-          <div className="animate-fade-in">
+          <div className="clay-settle">
+            {/* El disco de estado RESPIRA mientras la entrega está viva (clay-breathe):
+                el objeto de arcilla toma comportamiento, no sólo la sombra estática.
+                La sombra florece en el color del tono (currentColor). */}
             <div
-              className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full ${TONE_CLASS[tone]}`}
+              className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full ${TONE_CLASS[tone]}${
+                isLive ? ' clay-breathe' : ''
+              }`}
             >
               <StatusIcon className="h-9 w-9" />
             </div>
