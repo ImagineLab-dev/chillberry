@@ -3,20 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  BarChart3,
+  Ban,
+  Banknote,
   Bike,
   Check,
   ChefHat,
+  ClipboardList,
   Clock,
   LayoutDashboard,
   MapPin,
   Minus,
   Pause,
+  Percent,
   Play,
   Plus,
   Printer,
   RotateCcw,
-  ShieldCheck,
   Star,
   Store,
   Users,
@@ -339,7 +341,7 @@ const OWNER_STEPS = [
   'El dueño entra y ve el resumen del día',
   'Los avisos lo llevan directo a lo que hay que resolver',
   'El reporte: qué se vendió y qué deja margen',
-  'Control: cada descuento y anulación, con responsable',
+  'Control anti-robo: cada descuento, anulación y retiro con responsable — y la diferencia de cada cierre de caja',
 ];
 
 const REVENUE_DAYS = [42, 55, 38, 61, 72, 90, 100];
@@ -476,28 +478,131 @@ function OwnerReports() {
   );
 }
 
+/** Una fila auditable — misma anatomía que el ControlCard real: monto grande,
+ *  badge de tipo, motivo, y el rastro (responsable · mesa · hora). Las sensibles
+ *  (anulación, retiro) van con tinte rojo suave. */
+function ControlRow({
+  amount,
+  badge,
+  tone,
+  why,
+  who,
+  meta,
+  sensitive,
+}: {
+  amount: string;
+  badge: string;
+  tone: string;
+  why: string;
+  who: string;
+  meta?: string;
+  sensitive?: boolean;
+}) {
+  return (
+    <div className={`card p-2.5 ${sensitive ? 'border-error/40 bg-error/5' : ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="tabular font-heading text-base font-bold">{amount}</span>
+        <span className={`badge ${tone}`}>{badge}</span>
+      </div>
+      <p className="mt-0.5 text-xs">{why}</p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Responsable: <span className="font-medium text-foreground">{who}</span>
+        {meta ? ` · ${meta}` : ''}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Control interno (auditoría anti-robo). La pantalla real tiene CUATRO secciones
+ * —anulaciones, descuentos, movimientos de caja y arqueos— cada evento con su
+ * responsable, motivo y monto; las filas sensibles van en rojo, y el arqueo
+ * muestra la DIFERENCIA del cierre (faltante/sobrante). Se replica esa
+ * jerarquía, compacta, porque es lo que el dueño ve cuando entra.
+ */
 function OwnerControl() {
   return (
-    <div className="card p-3">
-      <p className="mb-3 flex items-center gap-2 font-heading text-sm font-semibold">
-        <ShieldCheck className="h-4 w-4 text-primary" />
-        Descuentos y anulaciones del turno
-      </p>
-      <ul className="space-y-2 text-xs">
-        {[
-          { who: 'Ana (cajera)', what: 'Descuento 20%', amount: '₲ 16.000', why: 'Cortesía por demora en cocina' },
-          { who: 'Luis (mozo)', what: 'Anulación', amount: '₲ 45.000', why: 'Cliente se retiró antes de servir' },
-          { who: 'Ana (cajera)', what: 'Retiro de caja', amount: '₲ 30.000', why: 'Pago a proveedor de hielo' },
-        ].map((r) => (
-          <li key={r.why} className="flex items-start justify-between gap-3 border-b border-border pb-2 last:border-0">
-            <span className="min-w-0">
-              <span className="font-medium">{r.what}</span> · {r.who}
-              <span className="block text-muted-foreground">{r.why}</span>
-            </span>
-            <span className="tabular shrink-0 font-medium">{r.amount}</span>
-          </li>
-        ))}
-      </ul>
+    <div className="space-y-2.5">
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-heading text-xs font-bold">
+          <Ban className="h-3.5 w-3.5 text-muted-foreground" /> Anulaciones de pedidos
+          <span className="badge badge-error ml-0.5">1</span>
+        </p>
+        <ControlRow
+          sensitive
+          amount="₲ 45.000"
+          badge="Anulación"
+          tone="badge-error"
+          why="Cliente se retiró antes de servir"
+          who="Luis (mozo)"
+          meta="Mesa 7 · 21:14"
+        />
+      </div>
+
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-heading text-xs font-bold">
+          <Percent className="h-3.5 w-3.5 text-muted-foreground" /> Descuentos aplicados
+          <span className="badge badge-warn ml-0.5">1</span>
+        </p>
+        <ControlRow
+          amount="₲ 16.000"
+          badge="Porcentaje"
+          tone="badge-warn"
+          why="Cortesía por demora en cocina"
+          who="Ana (cajera)"
+          meta="Mesa 3 · 20:48"
+        />
+      </div>
+
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-heading text-xs font-bold">
+          <Banknote className="h-3.5 w-3.5 text-muted-foreground" /> Movimientos de caja
+          <span className="badge badge-neutral ml-0.5">1</span>
+        </p>
+        <ControlRow
+          sensitive
+          amount="₲ 30.000"
+          badge="Retiro"
+          tone="badge-error"
+          why="Pago a proveedor de hielo"
+          who="Ana (cajera)"
+          meta="19:30"
+        />
+      </div>
+
+      <div>
+        <p className="mb-1 flex items-center gap-1.5 font-heading text-xs font-bold">
+          <ClipboardList className="h-3.5 w-3.5 text-muted-foreground" /> Arqueos (cierres de caja)
+          <span className="badge badge-neutral ml-0.5">2</span>
+        </p>
+        <div className="card overflow-hidden p-0">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-2.5 py-1.5 font-medium">Cierre</th>
+                <th className="px-2.5 py-1.5 font-medium">Cajero</th>
+                <th className="px-2.5 py-1.5 text-right font-medium">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-border">
+                <td className="tabular px-2.5 py-1.5 text-muted-foreground">Hoy 15:30</td>
+                <td className="px-2.5 py-1.5">Ana</td>
+                <td className="px-2.5 py-1.5 text-right">
+                  <span className="badge badge-ok">Cuadró</span>
+                </td>
+              </tr>
+              <tr>
+                <td className="tabular px-2.5 py-1.5 text-muted-foreground">Ayer 23:10</td>
+                <td className="px-2.5 py-1.5">Luis</td>
+                <td className="px-2.5 py-1.5 text-right">
+                  <span className="badge badge-error">Faltó ₲ 5.000</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
