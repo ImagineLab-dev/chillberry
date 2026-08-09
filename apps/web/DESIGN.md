@@ -184,6 +184,25 @@ Modelo de superficies flotantes: contenedores (`.panel`, `.card`) que flotan sob
 
 **La Regla del Par.** Radio y sombra van en pareja. Si cambiás un radio de escala (`clay`/`clay-sm`), cambiá también su sombra — o se rompe la lectura del material.
 
+## Motion
+
+**El material también se comporta, no sólo se ve.** El clay tiene la física de algo físico (sombra inflada, campo hundido); el motion le da el comportamiento que esa física promete. Es **"arcilla viva"**: superficies que se **asientan** como objetos al aparecer, objetos que **respiran** cuando su estado está vivo, y valores que **reaccionan** al cambiar. Calmo donde se espera, con criterio donde se opera — nunca decoración.
+
+**La curva de la casa:** `--ease-clay: cubic-bezier(0.22, 1, 0.36, 1)` — un ease-out con un dejo de asentamiento. Es la firma temporal del sistema; toda entrada la usa.
+
+### Vocabulario de motion
+- **`demo-enter` / `demo-stagger`**: entrada. Un bloque se asienta al aparecer (fade + `translateY` corto, `--ease-clay`); `demo-stagger` escalona los hijos directos (caen uno atrás de otro). Uso: las categorías de la carta, las StatCards del dashboard, las demos de la landing.
+- **`clay-settle`**: una superficie que se asienta al aparecer (fade + `translateY` + un dejo de escala) — como una pieza de arcilla que cae en su lugar. Uso: la tarjeta del tracking.
+- **`clay-breathe`**: un objeto **vivo** respira — escala lenta y simétrica + un halo de sombra que florece en el color de su tono (`currentColor`; la Regla de la Sombra llevada a motion). Lento y calmo (3.2s): es presencia, no alarma. Uso: el disco de estado del tracking, **sólo mientras la entrega está en curso**.
+- **`clay-tick`**: un valor **reacciona** al cambiar — un pop de escala breve, disparado remontando el nodo con una `key` = el valor. Uso: "A cobrar" y "Vuelto" del POS.
+
+### Named Rules
+**La Regla del Motion con Significado.** El movimiento se ata a lo que significa, jamás decora: el disco respira **sólo** con la entrega viva (entregado/cancelado no); el valor tickea **sólo** al cambiar. Si un movimiento no comunica un estado o un cambio real, no va.
+
+**La Regla del Respeto.** Todo el motion queda neutralizado por el bloque universal `prefers-reduced-motion` de `globals.css` — la accesibilidad no se negocia. Cada keyframe se diseña para que su estado 0%/100% sea el reposo, así el fallback estático es correcto.
+
+**La Regla de la Calma Operativa.** En superficies Operate (POS, KDS) el motion no late de fondo — sólo reacciona a acciones (un tick, un asentar). Un movimiento perpetuo en una pantalla de trabajo distrae; en una de espera (tracking), un respiro lento tranquiliza.
+
 ## Shapes
 
 Lenguaje de esquinas redondeadas y generosas, en una escala clara: 12px (controles chicos), 16px (alertas), **20px** (`.card`), **24px** (`.panel`, el tope generoso), **14px** (`.card-dense`, el contenido). Los botones y badges son **pill** (`9999px`) — el clay los quiere redondeados del todo; un botón de sólo ícono en pill es un círculo perfecto (un FAB es `btn btn-primary btn-icon btn-lg`, sin clase nueva). Sin ángulos rectos duros salvo dentro de tablas densas.
