@@ -258,7 +258,10 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Las 4 métricas del día caen escalonadas al cargar el resumen
+              (demo-stagger — el lenguaje 'arcilla viva'). Corre una vez al montar;
+              prefers-reduced-motion lo neutraliza. */}
+          <div className="demo-stagger mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Pedidos hoy" value={formatNumber(summary.todayOrders)} icon={ReceiptText} />
 
             <StatCard
