@@ -981,6 +981,12 @@ export function DemoShowcase() {
         </div>
       </div>
 
+      {/* Honestidad: la UI es la del producto, pero los nombres y montos son
+          inventados para ilustrar. Se rotula para que nadie los lea como reales. */}
+      <p className="mt-3 text-center text-xs text-muted-foreground">
+        Demostración del producto con datos de ejemplo.
+      </p>
+
       <p className="mt-1 text-center text-xs text-muted-foreground sm:hidden">
         Deslizá la pantalla de costado para verla completa
       </p>
