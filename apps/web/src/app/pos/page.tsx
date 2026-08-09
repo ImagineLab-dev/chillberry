@@ -1272,7 +1272,12 @@ export default function PosPage() {
                       </button>
                     )}
                     <span className="tabular ml-auto text-base font-semibold">
-                      A cobrar: {formatMoney(aCobrar, countryCode)}
+                      A cobrar:{' '}
+                      {/* key = el monto → al cambiar, el nodo remonta y corre el
+                          tick (clay-tick): el cajero ve el cambio. */}
+                      <span key={aCobrar} className="clay-tick">
+                        {formatMoney(aCobrar, countryCode)}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -1296,12 +1301,18 @@ export default function PosPage() {
                     />
                     {vuelto !== null && vuelto >= 0 && (
                       <span className="tabular ml-auto text-base font-semibold text-ok-foreground">
-                        Vuelto: {formatMoney(vuelto, countryCode)}
+                        Vuelto:{' '}
+                        <span key={vuelto} className="clay-tick">
+                          {formatMoney(vuelto, countryCode)}
+                        </span>
                       </span>
                     )}
                     {vuelto !== null && vuelto < 0 && (
                       <span className="tabular ml-auto text-sm font-medium text-warn-foreground">
-                        Falta: {formatMoney(-vuelto, countryCode)}
+                        Falta:{' '}
+                        <span key={vuelto} className="clay-tick">
+                          {formatMoney(-vuelto, countryCode)}
+                        </span>
                       </span>
                     )}
                   </div>

@@ -317,6 +317,27 @@
     animation: clay-breathe 3.2s ease-in-out infinite;
   }
 
+  /* Tick de valor: un pop de escala breve cuando un monto CAMBIA. Es el primitivo
+     "valor actualizado" — pensado para el POS (Operate): el ojo del cajero capta
+     el cambio del "A cobrar" o del "Vuelto" y no cobra un número viejo. Se dispara
+     remontando el nodo con una key = el valor; NO late de fondo, sólo al cambiar.
+     `inline-block` para que el transform aplique dentro de un <span>. */
+  @keyframes clay-tick {
+    0% {
+      transform: scale(1);
+    }
+    35% {
+      transform: scale(1.06);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  .clay-tick {
+    display: inline-block;
+    animation: clay-tick 240ms var(--ease-clay);
+  }
+
   /* Scroll suave al saltar a una categoría de la carta por ancla (#cat-…).
      El bloque de reduced-motion de abajo lo devuelve a 'auto' para quien lo pida. */
   html {
